@@ -1,0 +1,21 @@
+# Mises à jour hebdomadaires des actions (empreintes épinglées), de Gradle et de Cargo.
+# Chaque nouvelle dépendance reste soumise à un ADR : Dependabot ne fait que mettre à jour l'existant.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /rust
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

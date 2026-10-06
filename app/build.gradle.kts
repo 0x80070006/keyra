@@ -1,4 +1,6 @@
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.MessageDigest
 import javax.inject.Inject
 
 plugins {
@@ -172,3 +174,70 @@ val logGuard = tasks.register<LogGuardTask>("logGuard") {
 }
 tasks.named("check") { dependsOn(logGuard) }
 tasks.named("preBuild") { dependsOn(logGuard) }
+
+// ---------------------------------------------------------------------------
+// SBOM CycloneDX 1.6 de ce qui est livré dans l'APK : bibliothèques JVM d'exécution (release)
+// et crates Rust liées dans libkeyra_jni.so (dépendances normales seulement, sans dev ni build).
+// Sans plugin tiers ; sortie déterministe (pas de numéro de série ni de date).
+// ---------------------------------------------------------------------------
+abstract class SbomTask : DefaultTask() {
+    @get:Input abstract val appVersion: Property<String>
+    @get:Input abstract val jvmComponents: ListProperty<String>
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val jvmFiles: ConfigurableFileCollection
+    @get:InputFile @get:PathSensitive(PathSensitivity.RELATIVE) abstract val cargoLock: RegularFileProperty
+    @get:Internal abstract val workspace: DirectoryProperty
+    @get:Input abstract val cargo: Property<String>
+    @get:OutputFile abstract val output: RegularFileProperty
+    @get:Inject abstract val exec: ExecOperations
+
+    private fun json(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    private fun sha256(file: File) = MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
+
+    @TaskAction fun write() {
+        val components = ArrayList<String>()
+        jvmComponents.get().zip(jvmFiles.files.sortedBy { it.name }.let { files -> jvmComponents.get().map { id -> files.first { it.name.startsWith(id.split(':')[1] + "-") } } })
+            .forEach { (id, file) ->
+                val (group, name, version) = id.split(':')
+                components += """{"type":"library","name":${json(name)},"group":${json(group)},"version":${json(version)},"purl":${json("pkg:maven/$group/$name@$version")},"scope":"required","hashes":[{"alg":"SHA-256","content":"${sha256(file)}"}]}"""
+            }
+        // Crates : graphe résolu par cargo, filtré sur la cible Android, depuis keyra-jni, liens « normaux » seulement.
+        val out = ByteArrayOutputStream()
+        exec.exec {
+            commandLine(cargo.get(), "metadata", "--format-version", "1", "--locked", "--filter-platform", "aarch64-linux-android")
+            workingDir = workspace.get().asFile; standardOutput = out
+        }
+        @Suppress("UNCHECKED_CAST") val meta = groovy.json.JsonSlurper().parseText(out.toString(Charsets.UTF_8)) as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST") val packages = (meta["packages"] as List<Map<String, Any?>>).associateBy { it["id"] as String }
+        @Suppress("UNCHECKED_CAST") val nodes = ((meta["resolve"] as Map<String, Any?>)["nodes"] as List<Map<String, Any?>>).associateBy { it["id"] as String }
+        val checksums = Regex("""name = "([^"]+)"\nversion = "([^"]+)"\nsource = "[^"]+"\nchecksum = "([0-9a-f]+)"""")
+            .findAll(cargoLock.get().asFile.readText().replace("\r\n", "\n")).associate { "${it.groupValues[1]}@${it.groupValues[2]}" to it.groupValues[3] }
+        val root = packages.values.first { it["name"] == "keyra-jni" }["id"] as String
+        val seen = sortedSetOf<String>(); val queue = ArrayDeque(listOf(root))
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst(); if (!seen.add(id)) continue
+            @Suppress("UNCHECKED_CAST") (nodes[id]?.get("deps") as? List<Map<String, Any?>>).orEmpty()
+                .filter { dep -> (dep["dep_kinds"] as List<Map<String, Any?>>).any { it["kind"] == null } }
+                .forEach { queue.addLast(it["pkg"] as String) }
+        }
+        seen.map { packages.getValue(it) }.sortedBy { it["name"] as String }.forEach { p ->
+            val name = p["name"] as String; val version = p["version"] as String
+            val hash = checksums["$name@$version"]?.let { ""","hashes":[{"alg":"SHA-256","content":"$it"}]""" } ?: ""
+            val local = p["source"] == null
+            components += """{"type":"library","name":${json(name)},"version":${json(version)},"purl":${json(if (local) "pkg:generic/keyra/$name@$version" else "pkg:cargo/$name@$version")},"scope":"required"$hash${if (local) ""","description":"Crate du dépôt Keyra (rust/$name)"""" else ""}}"""
+        }
+        output.get().asFile.writeText("""{"bomFormat":"CycloneDX","specVersion":"1.6","version":1,"metadata":{"component":{"type":"application","name":"Keyra","version":${json(appVersion.get())},"licenses":[{"license":{"id":"MIT"}}]}},"components":[
+${components.joinToString(",\n")}
+]}
+""")
+    }
+}
+tasks.register<SbomTask>("sbom") {
+    val runtime = configurations.named("releaseRuntimeClasspath")
+    appVersion.set(android.defaultConfig.versionName ?: "inconnue")
+    jvmComponents.set(runtime.map { c -> c.incoming.resolutionResult.allComponents.mapNotNull { (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { m -> "${m.group}:${m.module}:${m.version}" } }.sorted() })
+    jvmFiles.from(runtime.map { c -> c.incoming.artifactView { attributes { attribute(org.gradle.api.attributes.Attribute.of("artifactType", String::class.java), "jar") } }.files })
+    cargoLock.set(rustWorkspace.file("Cargo.lock"))
+    workspace.set(rustWorkspace)
+    cargo.set(cargoBuild.flatMap { it.cargo })
+    output.set(layout.buildDirectory.file("reports/keyra/sbom.cdx.json"))
+}

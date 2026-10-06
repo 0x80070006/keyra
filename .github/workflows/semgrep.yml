@@ -1,0 +1,32 @@
+# Semgrep : règles Kotlin, Rust, secrets et GitHub Actions. Échoue sur tout résultat non annoté.
+# Une exception se fait par « nosemgrep: <règle> (justification) » sur la ligne précédente.
+name: Semgrep
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Semgrep (version épinglée)
+        run: |
+          python3 -m pip install --quiet "semgrep==1.179.0"
+          semgrep scan --metrics=off --error --sarif --output semgrep.sarif \
+            --config p/kotlin --config p/rust --config p/secrets --config p/github-actions .
+      - uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
