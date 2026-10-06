@@ -155,3 +155,10 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 | T-5 Coupure pendant une écriture | **corrigée** : instantané atomique, fin de journal tronquée ignorée (testé) |
 | D-2 Fichier corrompu | **corrigée** : lecture bornée, aucune exception, instantané propre réécrit |
 | Fonctions innovantes n° 3, 4 et 6 | livrées |
+
+## 9. Avancement (fin de phase 4)
+
+| Menace | État |
+|--------|------|
+| D-1 Application cible lente ou hostile (`getTextBeforeCursor`) | **corrigée** : cache local, relecture seulement au début du champ ou après un déplacement extérieur, réponses bornées à 1 000 caractères |
+| I-14 Copies résiduelles du texte | inchangée : cache de 1 000 caractères en mémoire, vidé à chaque champ (ADR-0011) |

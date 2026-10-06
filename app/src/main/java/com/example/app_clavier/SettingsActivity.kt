@@ -70,6 +70,24 @@ class SettingsActivity:Activity(){
             override fun onStopTrackingTouch(s:SeekBar?){}
         })})
         root.addView(Switch(this).apply{setText(R.string.setting_pin_shuffle);setTextColor(p.text);isChecked=prefs.getBoolean("pin_shuffle",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("pin_shuffle",v).apply()}})
+        text("Écriture",18f)
+        fun toggle(res:Int,key:String,default:Boolean)=root.addView(Switch(this).apply{setText(res);setTextColor(p.text);isChecked=prefs.getBoolean(key,default);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean(key,v).apply()}})
+        toggle(R.string.setting_auto_cap,"auto_cap",true)
+        toggle(R.string.setting_composing,"composing",true)
+        text("Espace avant « ? ! ; : » (typographie française)",15f)
+        val spaceRow=LinearLayout(this)
+        listOf("fine" to "Fine insécable","insecable" to "Insécable","aucune" to "Aucune").forEach{(id,title)->spaceRow.addView(Button(this).apply{
+            text=if(prefs.getString("fr_space","fine")==id)"✓ $title" else title;isAllCaps=false;textSize=12f;setTextColor(p.text)
+            backgroundTintList=android.content.res.ColorStateList.valueOf(p.key)
+            setOnClickListener{prefs.edit().putString("fr_space",id).apply();render()}
+        },LinearLayout.LayoutParams(0,dp(56),1f).apply{setMargins(dp(2),dp(2),dp(2),dp(2))})}
+        root.addView(spaceRow)
+        text("Gestes",18f)
+        toggle(R.string.setting_trackpad,"trackpad",true)
+        toggle(R.string.setting_gesture_down,"gesture_down",true)
+        toggle(R.string.setting_gesture_up,"gesture_up",true)
+        toggle(R.string.setting_gesture_left,"gesture_left",false)
+        text("Retour arrière : maintenu, il accélère puis efface mot par mot ; glissé vers la gauche, il sélectionne des mots à effacer.",14f)
         text("Dans les champs de code PIN, les chiffres changent de place à chaque fois : quelqu’un qui regarde tes doigts ne peut pas deviner le code. Les champs privés n’affichent jamais la touche enfoncée.",14f)
         val latency=TextView(this).apply{setTextColor(p.text);textSize=16f;setPadding(0,dp(14),0,0)}
         fun latencyLabel(v:Int)="Objectif de latence : ≤ ${v} ms — ACTION_DOWN jusqu’à l’envoi du caractère"

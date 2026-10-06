@@ -44,7 +44,8 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
     }
 
     /** `quiet` : champ sensible ou pavé PIN, sans surbrillance (ADR-0007). `password` : TalkBack dit « point ». */
-    class Settings(val commitOnDown:Boolean=false,val longPressMs:Long=300,val haptic:Boolean=true,val quiet:Boolean=false,val password:Boolean=false)
+    class Settings(val commitOnDown:Boolean=false,val longPressMs:Long=300,val haptic:Boolean=true,val quiet:Boolean=false,val password:Boolean=false,
+                   val trackpad:Boolean=true,val swipeDownHide:Boolean=true,val swipeUpShift:Boolean=true,val swipeLeftDeleteWord:Boolean=false)
 
     var keys:List<KeyDef> = emptyList();private set
     /** Minuteries (appui long, répétition, surbrillance) : fil principal, même vue détachée (tests). */
@@ -68,9 +69,22 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
     // ---------------------------------------------------------------- suivi des doigts
     private inner class Tracker(val id:Int){
         var active=false;var key:KeyDef?=null;var committed=false;var startedOnMode=false;var fromMode=false;var longPressed=false
+        /** Point d'appui (repère de référence) et instant : gestes, pavé tactile, glisser depuis Retour arrière. */
+        var downX=0f;var downY=0f;var downAt=0L;var repeats=0
+        var trackpad=false;var anchorX=0f
+        var selecting=false;var selectedWords=0
+        /** Le doigt s'est posé sur un caractère ou sur Espace : seul cas où un balayage devient un geste. */
+        var startedOnText=false
         val longPress=Runnable{onLongPressTimeout(this)}
-        val repeat=object:Runnable{override fun run(){if(active && key?.code=="delete"){listener.onKey("delete",false);timers.postDelayed(this,REPEAT_MS)}}}
-        fun reset(){active=false;key=null;committed=false;startedOnMode=false;fromMode=false;longPressed=false;timers.removeCallbacks(longPress);timers.removeCallbacks(repeat)}
+        /** Retour arrière maintenu : de plus en plus vite, puis mot par mot après 1,5 s. */
+        val repeat=object:Runnable{override fun run(){
+            if(!active || key?.code!="delete" || selecting)return
+            val wordMode=SystemClock.uptimeMillis()-downAt>WORD_DELETE_AFTER_MS
+            listener.onKey(if(wordMode)"deleteWord" else "delete",false);repeats++
+            timers.postDelayed(this,if(wordMode)WORD_REPEAT_MS else maxOf(REPEAT_MIN_MS,REPEAT_MS-repeats*5))
+        }}
+        fun reset(){active=false;key=null;committed=false;startedOnMode=false;fromMode=false;longPressed=false;repeats=0
+            trackpad=false;selecting=false;selectedWords=0;startedOnText=false;timers.removeCallbacks(longPress);timers.removeCallbacks(repeat)}
     }
     private val trackers=Array(MAX_POINTERS){Tracker(it)}
 
@@ -87,7 +101,10 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
             when(e.actionMasked){
                 MotionEvent.ACTION_DOWN,MotionEvent.ACTION_POINTER_DOWN->down(e,e.actionIndex)
                 MotionEvent.ACTION_MOVE->for(i in 0 until e.pointerCount)move(e,i)
-                MotionEvent.ACTION_UP,MotionEvent.ACTION_POINTER_UP->if(up(e.getPointerId(e.actionIndex)))performClick()
+                MotionEvent.ACTION_UP,MotionEvent.ACTION_POINTER_UP->{
+                    lastX=refX(e.getX(e.actionIndex));lastY=refY(e.getY(e.actionIndex))
+                    if(up(e.getPointerId(e.actionIndex)))performClick()
+                }
                 MotionEvent.ACTION_CANCEL->cancelAll()
             }
         }
@@ -103,7 +120,9 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
             if(k!=null && k.printable){timers.removeCallbacks(other.longPress);other.committed=true;listener.onKey(k.code,other.fromMode)}
         }
         val t=trackers[id];t.reset();t.active=true
+        t.downX=refX(e.getX(index));t.downY=refY(e.getY(index));t.downAt=SystemClock.uptimeMillis()
         val key=detect(e.getX(index),e.getY(index));t.key=key
+        t.startedOnText=key!=null && (key.printable || key.code==" ")
         if(key!=null){
             if(settings.haptic)performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             when {
@@ -130,9 +149,28 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
             if(selected!=p.selected){p.selected=selected;invalidate()}
             return
         }
+        val x=refX(e.getX(index))
+        // Retour arrière : glisser vers la gauche sélectionne des mots, relâcher les efface (Gboard, SwiftKey).
+        if(t.key?.code=="delete"){
+            val dx=x-t.downX
+            if(dx<-DELETE_SWIPE_START){t.selecting=true;timers.removeCallbacks(t.repeat)}
+            if(t.selecting){
+                val words=if(dx<-DELETE_SWIPE_START)((-dx-DELETE_SWIPE_START)/DELETE_SWIPE_STEP).toInt()+1 else 0
+                if(words!=t.selectedWords){t.selectedWords=words;listener.onKey("selectWordsBack:$words",false);tick()}
+            }
+            return
+        }
+        // Barre d'espace : glisser horizontalement déplace le curseur (FUTO, SwiftKey).
+        if(t.key?.code==" " && settings.trackpad && !settings.quiet){
+            if(!t.trackpad && kotlin.math.abs(x-t.downX)>TRACKPAD_START){t.trackpad=true;t.committed=true;t.anchorX=t.downX+(if(x>t.downX)TRACKPAD_START else -TRACKPAD_START);timers.removeCallbacks(t.longPress)}
+            if(t.trackpad){
+                while(x-t.anchorX>=TRACKPAD_STEP){listener.onKey("cursorRight",false);t.anchorX+=TRACKPAD_STEP;tick()}
+                while(t.anchorX-x>=TRACKPAD_STEP){listener.onKey("cursorLeft",false);t.anchorX-=TRACKPAD_STEP;tick()}
+                return
+            }
+        }
         val key=detect(e.getX(index),e.getY(index))
         if(key===t.key)return
-        if(t.key?.code=="delete"){timers.removeCallbacks(t.repeat);t.key=null;invalidate();return}
         if(t.committed && !t.startedOnMode)return // déjà validée à l'appui : plus de glissement
         if(t.startedOnMode){t.fromMode=true;t.committed=false}
         timers.removeCallbacks(t.longPress);t.key=key
@@ -140,12 +178,30 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         invalidate()
     }
 
+    /** Geste de balayage (AnySoftKeyboard) : vers le bas masque, vers le haut met une majuscule, vers la gauche efface un mot. */
+    private fun gestureFor(x0:Float,y0:Float,x1:Float,y1:Float):String? {
+        val dx=x1-x0;val dy=y1-y0
+        return when{
+            settings.swipeDownHide && dy>SWIPE_MIN_Y && kotlin.math.abs(dx)<dy*0.6f -> "hide"
+            settings.swipeUpShift && -dy>SWIPE_MIN_Y && kotlin.math.abs(dx)< -dy*0.6f -> "gestureShift"
+            settings.swipeLeftDeleteWord && -dx>SWIPE_MIN_X && kotlin.math.abs(dy)< -dx*0.5f -> "deleteWord"
+            else -> null
+        }
+    }
+    private var lastX=0f;private var lastY=0f
+    private fun tick(){if(settings.haptic)performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)}
+
     /** Vrai si le relâchement valide une touche (clic, pour l'accessibilité). */
     private fun up(id:Int):Boolean {
         if(id>=MAX_POINTERS)return false
         val t=trackers[id];if(!t.active)return false
         val key=t.key;val committed=t.committed;val fromMode=t.fromMode;val longPressed=t.longPressed
+        val selecting=t.selecting;val selectedWords=t.selectedWords;val trackpad=t.trackpad
+        val gesture=if(t.startedOnText && !fromMode && !trackpad && !longPressed)gestureFor(t.downX,t.downY,lastX,lastY) else null
         t.reset()
+        if(selecting){if(selectedWords>0)listener.onKey("deleteSelection",false);invalidate();return false}
+        if(trackpad){invalidate();return false}
+        if(gesture!=null){listener.onKey(gesture,false);invalidate();return false}
         val p=popup
         if(p!=null && p.pointer==id){popup=null;choose(p);flash(p.base);invalidate();return true}
         val click=key!=null && !committed && !longPressed && !(key.isModeKey && fromMode)
@@ -371,8 +427,18 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         const val REF_W=684f
         const val REF_H=612f
         private const val MAX_POINTERS=10
-        private const val REPEAT_START_MS=230L
-        private const val REPEAT_MS=30L
+        private const val REPEAT_START_MS=350L
+        private const val REPEAT_MS=80L
+        private const val REPEAT_MIN_MS=25L
+        private const val WORD_DELETE_AFTER_MS=1_500L
+        private const val WORD_REPEAT_MS=200L
+        // Distances dans le repère 684 × 612 (une touche fait 58 × 85).
+        private const val DELETE_SWIPE_START=30f
+        private const val DELETE_SWIPE_STEP=45f
+        private const val TRACKPAD_START=20f
+        private const val TRACKPAD_STEP=12f
+        private const val SWIPE_MIN_Y=150f
+        private const val SWIPE_MIN_X=200f
         private const val FLASH_MS=85L
         private const val PANIC_HOLD_MS=3_000L
         private const val BUTTON="android.widget.Button"

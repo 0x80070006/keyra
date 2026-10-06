@@ -24,7 +24,7 @@ class MainActivity:Activity(){
         button("Thèmes et correction"){startActivity(Intent(this,SettingsActivity::class.java))}
         text("ESSAYER LE CLAVIER",12f)
         root.addView(EditText(this).apply{
-            id=android.view.View.generateViewId();textSize=20f;hint="Écris ici…";setTextColor(p.text);setHintTextColor(p.text);setPadding(dp(14),dp(12),dp(14),dp(12));background=android.graphics.drawable.GradientDrawable().apply{setColor(p.key);cornerRadius=dp(22).toFloat()};minLines=2;maxLines=4;inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            id=android.view.View.generateViewId();textSize=20f;hint="Écris ici…";setTextColor(p.text);setHintTextColor(p.text);setPadding(dp(14),dp(12),dp(14),dp(12));background=android.graphics.drawable.GradientDrawable().apply{setColor(p.key);cornerRadius=dp(22).toFloat()};minLines=2;maxLines=4;inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         },LinearLayout.LayoutParams(-1,dp(100)))
         text("⇧ : majuscules. Appui long sur A–P : chiffres. La flèche en haut à droite ouvre les fonctions. ☺ ouvre les emoji ; ?123 ouvre les symboles, puis la touche 123 ouvre le pavé numérique.",14f)
         text("La correction s’applique à l’espace. Retour arrière immédiatement après une correction restaure le mot d’origine. Règle la tolérance dans les paramètres.",14f)

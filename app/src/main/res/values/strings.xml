@@ -1,5 +1,11 @@
 <resources><string name="app_name">Keyra</string><string name="subtype_name">Français · AZERTY</string>    <string name="setting_commit_on_down">Valider la touche dès l’appui (comportement de Keyra 11)</string>
     <string name="setting_pin_shuffle">Pavé PIN mélangé à chaque ouverture</string>
     <string name="setting_clear_sensitive">Effacer une copie sensible du presse-papiers après 30 secondes</string>
+    <string name="setting_auto_cap">Majuscule automatique en début de phrase</string>
+    <string name="setting_composing">Souligner le mot en cours (désactiver si une application réagit mal)</string>
+    <string name="setting_trackpad">Glisser sur Espace pour déplacer le curseur</string>
+    <string name="setting_gesture_down">Balayer vers le bas pour masquer le clavier</string>
+    <string name="setting_gesture_up">Balayer vers le haut pour une majuscule</string>
+    <string name="setting_gesture_left">Balayer vers la gauche pour effacer un mot</string>
 </resources>
 
