@@ -99,7 +99,35 @@
 4. **Branche protégée et commits signés** : prévus en phase 7. Les activer maintenant bloquerait l'envoi direct sur `main` pendant le chantier.
 5. **Mesures sur le Pixel 9a** : reportées à la demande de l'utilisateur.
 
-## 5. Avant la phase 2
+## 5. Résultat sur GitHub
 
-- Résultat de la première CI sur GitHub : voir l'onglet Actions. Les jobs « tests instrumentés » et « build reproductible » sont les plus susceptibles de demander un ajustement à leur premier passage.
-- Score OpenSSF Scorecard : publié après le premier passage du workflow.
+**CI verte** (commit `e243fd4`) : Rust, Android, tests instrumentés, build reproductible et comparaison, CodeQL (Kotlin, Rust, Actions), Semgrep, Scorecard.
+
+Trois ajustements ont été nécessaires au premier passage :
+1. Trois empreintes Gradle manquaient : un cache local résout parfois des `.pom` là où un cache vierge résout des `.module`. Le fichier a été régénéré avec `--refresh-dependencies`.
+2. `cargo-deny` refusait la dépendance de chemin sans version.
+3. Le test des zones mortes supposait la même échelle horizontale et verticale ; il utilise maintenant les échelles réelles, avec un plancher de 28 %.
+
+**Build reproductible confirmé** : deux builds release dans deux dossiers différents donnent un APK identique octet pour octet.
+
+**OpenSSF Scorecard : 5,4/10** (objectif ≥ 8 en phase 7).
+
+| Vérification | Score | Suite |
+|--------------|-------|-------|
+| Token-Permissions, Dangerous-Workflow, SAST, Fuzzing, License, Dependency-Update-Tool | 10 | — |
+| Binary-Artifacts | 9 | `gradle-wrapper.jar`, standard, épinglé par `distributionSha256Sum` |
+| Pinned-Dependencies | 8 | Semgrep installé par pip : **corrigé** (image Docker épinglée par empreinte) |
+| Security-Policy, Branch-Protection, Code-Review, Signed-Releases, Packaging, CII-Best-Practices | 0 ou N/A | phase 7 (`SECURITY.md`, branche protégée, revue, releases signées, F-Droid) |
+| Maintained, Contributors | 0 | dépôt créé il y a moins de 90 jours ; un seul contributeur |
+| Vulnerabilities | 0 | voir ci-dessous |
+
+**« 52 vulnérabilités » : aucune dans l'APK.** OSV les trouve dans `verification-metadata.xml`, qui liste les outils de **build** :
+- Netty (37 avis), via les outils de test d'AGP ;
+- Bouncy Castle (environ 40 avis sur ses variantes), via `apksig` ;
+- quelques autres : okio, jdom, commons-lang, httpclient, jose4j, kotlin-gradle-plugin.
+
+L'APK n'embarque que `kotlin-stdlib`, `jni-sys` et `zeroize` (SBOM). Risque résiduel : du code vulnérable s'exécute sur la machine de build, pas sur le téléphone. Mesures : toutes les dépendances de build sont épinglées par SHA-256, la CI tourne sur un runner jetable, et le build reproductible permet de détecter une altération. À traiter : les PR Dependabot **#2 (AGP 9.4.1)** et **#3 (Gradle 9.8.0)** demandent de régénérer `verification-metadata.xml`. Elles restent ouvertes pour ta décision.
+
+**Code scanning** : les 4 alertes Semgrep « unsafe-usage » sont les blocs `unsafe` audités de `keyra-jni` (annotés `nosemgrep`, ADR-0021).
+
+**Dependabot** : PR #1 (`jni-sys` 0.4.1) fermée volontairement (ADR-0022) ; Dependabot ignore désormais ce crate.
