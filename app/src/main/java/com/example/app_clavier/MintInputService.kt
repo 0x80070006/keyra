@@ -43,7 +43,7 @@ class MintInputService:InputMethodService(){
     private val queuedKeys=ArrayDeque<QueuedKey>(96)
     private val prefsListener=android.content.SharedPreferences.OnSharedPreferenceChangeListener{_,key->main.post{
         when(key){
-            "theme","color1","color2","background_uri","background_blur","key_blur","height","hand"->keyboard?.refreshTheme()
+            "theme","color1","color2","background_uri","background_blur","key_blur","height","hand","haptic","commit_on_down","long_press_ms","pin_shuffle"->keyboard?.refreshTheme()
             "correction","tolerance","personal"->scheduleSuggestions()
         }
     }}
@@ -74,7 +74,7 @@ class MintInputService:InputMethodService(){
         val cls=(info?.inputType ?: 0) and InputType.TYPE_MASK_CLASS
         policy=SecurityPolicy.of(info,keyguard?.isKeyguardLocked ?: true)
         keyboard?.setSearchAction((info?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION==EditorInfo.IME_ACTION_SEARCH)
-        keyboard?.reset(cls==InputType.TYPE_CLASS_NUMBER || cls==InputType.TYPE_CLASS_PHONE || cls==InputType.TYPE_CLASS_DATETIME,policy.noHistory)
+        keyboard?.reset(cls==InputType.TYPE_CLASS_NUMBER || cls==InputType.TYPE_CLASS_PHONE || cls==InputType.TYPE_CLASS_DATETIME,policy.noHistory,policy.isPassword,policy.isPinPad)
     }
     private fun trailingWord(text:String):String=text.takeLastWhile{it.isLetter() || it=='\'' || it=='’' || it=='-'}
     private fun personal(word:String)=prefs.getString("personal","")!!.lineSequence().any{it.trim().equals(word,true)}
