@@ -243,7 +243,7 @@ class MintInputService:InputMethodService(){
         pending.text?.let{currentInputConnection?.commitText(it,1)}
         pending.uri?.let{uri->
             val mime=contentResolver.getType(uri) ?: "image/*"
-            if(Build.VERSION.SDK_INT>=25 && info.contentMimeTypes?.any{ClipDescription.compareMimeTypes(mime,it)}==true){
+            if(info.contentMimeTypes?.any{ClipDescription.compareMimeTypes(mime,it)}==true){
                 val content=InputContentInfo(uri,ClipDescription("Image choisie",arrayOf(mime)),null)
                 val ok=runCatching{currentInputConnection?.commitContent(content,InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,null)==true}.getOrDefault(false)
                 if(!ok)Toast.makeText(this,"Cette application a refusé l’image",Toast.LENGTH_LONG).show()

@@ -3,7 +3,6 @@
 Sorties :
   res/drawable/ic_keyra_foreground.xml   calque avant de l'icône adaptative (vecteur)
   res/drawable/ic_keyra_monochrome.xml   calque des icônes à thème (Android 13+)
-  res/mipmap-*dpi/ic_keyra.png           icône classique pour Android 7.0 à 7.1
 Usage : python tools/make_icon.py [aperçu.png]
 """
 import sys
@@ -91,8 +90,7 @@ def preview(path):
 def main():
     (RES / "drawable/ic_keyra_foreground.xml").write_text(vector("#FFFFFF"), encoding="utf-8", newline="\n")
     (RES / "drawable/ic_keyra_monochrome.xml").write_text(vector("#FFFFFF"), encoding="utf-8", newline="\n")
-    for folder, size in {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}.items():
-        legacy(size).save(RES / f"mipmap-{folder}/ic_keyra.png", optimize=True)
+    # minSdk 29 : l'icône adaptative (API 26+) suffit, plus de PNG classiques (ADR-0004).
     if len(sys.argv) > 1:
         preview(sys.argv[1])
 
