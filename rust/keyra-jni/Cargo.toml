@@ -1,0 +1,20 @@
+[package]
+name = "keyra-jni"
+version = "0.1.0"
+description = "Pont JNI minimal entre Kotlin et keyra-core. Seul crate autorisé à contenir du code unsafe."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "keyra_jni"
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+keyra-core = { path = "../keyra-core" }
+jni-sys = "=0.3.0"
+zeroize = "1.9"

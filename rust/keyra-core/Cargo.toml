@@ -1,0 +1,16 @@
+[package]
+name = "keyra-core"
+version = "0.1.0"
+description = "Cœur de Keyra : fonctions pures, sans unsafe, sans entrée-sortie."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1.11"

@@ -1,0 +1,6 @@
+# Version de Rust épinglée : la même partout (poste de dev, CI, F-Droid) pour des builds reproductibles.
+[toolchain]
+channel = "1.99.0"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-linux-android", "x86_64-linux-android"]
+profile = "minimal"

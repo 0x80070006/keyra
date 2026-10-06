@@ -1,0 +1,23 @@
+# Fuzzing (cargo-fuzz, Rust nightly, Linux). Lancé par la CI nocturne : .github/workflows/fuzz.yml
+[package]
+name = "keyra-fuzz"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+keyra-core = { path = "../keyra-core" }
+
+[[bin]]
+name = "secret_classify"
+path = "fuzz_targets/secret_classify.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

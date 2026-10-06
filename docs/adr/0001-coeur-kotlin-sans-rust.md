@@ -1,6 +1,6 @@
 # ADR-0001 — Le cœur reste en Kotlin, sans Rust ni JNI
 
-- **Statut** : accepté (phase 0), réévaluable
+- **Statut** : **remplacé par l'ADR-0021** (phase 1, à la demande de l'utilisateur)
 - **Arbitrage** : D1
 
 ## Contexte
