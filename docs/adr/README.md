@@ -33,3 +33,5 @@ Format : contexte, décision, conséquences, considérations de sécurité. Un A
 | [0027](0027-dispositions-json.md) | Dispositions JSON, parseur strict | accepté |
 | [0028](0028-export-chiffre-argon2id.md) | Export chiffré Argon2id | accepté |
 | [0029](0029-extraits-et-coffre-biometrique.md) | Extraits et coffre biométrique | accepté |
+| [0030](0030-baseline-profile.md) | Baseline Profile et profileinstaller | accepté |
+| [0031](0031-signature-et-publication.md) | Signature v3.1, Sigstore, SBOM | accepté |

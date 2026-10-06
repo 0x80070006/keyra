@@ -174,3 +174,12 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 | Fichier d'import piégé (déni de service, paramètres affaiblis) | **corrigée** : bornes vérifiées avant calcul, en-tête authentifié, décodage borné ; `LearningGate.restore` réapplique `SecretDetector` |
 | Extrait sensible lu sur un téléphone déverrouillé | Extraits protégés : clé Keystore liée à une authentification forte de moins de 30 s, détruite par le geste panique. Comportement sur GrapheneOS **non vérifié** (ADR-0029) |
 | Transparence (D9) | Le tableau affiche l'absence de `INTERNET` lue dans `PackageManager` et `TrafficStats.getUidTxBytes`, plus tous les magasins, à lister, rechercher et supprimer (en `FLAG_SECURE`) |
+
+## 11. Avancement (fin de phase 7)
+
+| Menace ou surface | État |
+|-------------------|------|
+| Capture ou enregistrement d'écran du presse-papiers ou d'un champ privé | **corrigée** : `FLAG_SECURE` sur la fenêtre du clavier dans ces cas (trouvé par l'audit MASVS) |
+| Composants ajoutés par profileinstaller | `InitializationProvider` non exporté ; `ProfileInstallReceiver` protégé par `DUMP`. En liste blanche (ADR-0030) |
+| APK falsifié ou substitué | Signature v2 et v3 (rotation v3.1), Sigstore lié au workflow de release, SBOM, build reproductible (ADR-0031) |
+| Clé de release volée | Hors du dépôt, dans un environnement GitHub protégé ; rotation documentée (`docs/release.md`) |

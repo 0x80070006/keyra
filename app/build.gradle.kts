@@ -18,8 +18,8 @@ android {
         applicationId = "com.example.app_clavier"
         minSdk = 29
         targetSdk = 37
-        versionCode = 11
-        versionName = "11.0"
+        versionCode = 12
+        versionName = "12.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Seules ABI livrées : arm64 (téléphones) et x86_64 (émulateur). Voir ADR-0021.
@@ -63,8 +63,10 @@ android {
     }
 }
 
-// Aucune dépendance d'exécution hors de la bibliothèque standard Kotlin (ADR-0013 à 0016).
+// Dépendances d'exécution : bibliothèque standard Kotlin (ADR-0013 à 0016) et profileinstaller (ADR-0030).
 dependencies {
+    // Seule dépendance d'exécution AndroidX : installe le Baseline Profile hors du Play Store (F-Droid). ADR-0030.
+    implementation(libs.androidx.profileinstaller)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)
@@ -195,7 +197,8 @@ abstract class SbomTask : DefaultTask() {
 
     @TaskAction fun write() {
         val components = ArrayList<String>()
-        jvmComponents.get().zip(jvmFiles.files.sortedBy { it.name }.let { files -> jvmComponents.get().map { id -> files.first { it.name.startsWith(id.split(':')[1] + "-") } } })
+        // Chaque entrée : « groupe:nom:version<tab>fichier » (pour une AAR, le classes.jar extrait par AGP).
+        jvmComponents.get().map { it.substringBefore('	') to File(it.substringAfter('	')) }
             .forEach { (id, file) ->
                 val (group, name, version) = id.split(':')
                 components += """{"type":"library","name":${json(name)},"group":${json(group)},"version":${json(version)},"purl":${json("pkg:maven/$group/$name@$version")},"scope":"required","hashes":[{"alg":"SHA-256","content":"${sha256(file)}"}]}"""
@@ -234,8 +237,9 @@ ${components.joinToString(",\n")}
 tasks.register<SbomTask>("sbom") {
     val runtime = configurations.named("releaseRuntimeClasspath")
     appVersion.set(android.defaultConfig.versionName ?: "inconnue")
-    jvmComponents.set(runtime.map { c -> c.incoming.resolutionResult.allComponents.mapNotNull { (it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { m -> "${m.group}:${m.module}:${m.version}" } }.sorted() })
-    jvmFiles.from(runtime.map { c -> c.incoming.artifactView { attributes { attribute(org.gradle.api.attributes.Attribute.of("artifactType", String::class.java), "jar") } }.files })
+    val jarArtifacts = runtime.map { c -> c.incoming.artifactView { attributes { attribute(org.gradle.api.attributes.Attribute.of("artifactType", String::class.java), "jar") } }.artifacts.artifacts }
+    jvmComponents.set(jarArtifacts.map { all -> all.mapNotNull { a -> (a.id.componentIdentifier as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)?.let { m -> "${m.group}:${m.module}:${m.version}	${a.file.absolutePath}" } }.sorted() })
+    jvmFiles.from(jarArtifacts.map { all -> all.map { it.file } })
     cargoLock.set(rustWorkspace.file("Cargo.lock"))
     workspace.set(rustWorkspace)
     cargo.set(cargoBuild.flatMap { it.cargo })
