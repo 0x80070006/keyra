@@ -21,3 +21,10 @@ doc = false
 bench = false
 
 [workspace]
+
+[[bin]]
+name = "vault_journal"
+path = "fuzz_targets/vault_journal.rs"
+test = false
+doc = false
+bench = false

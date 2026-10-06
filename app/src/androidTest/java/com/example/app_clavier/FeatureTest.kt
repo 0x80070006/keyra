@@ -53,6 +53,7 @@ class FeatureTest {
         KeyboardPrefs.themes.keys.forEach{val p=KeyboardPrefs.palette(context,it);assertNotEquals("Theme $it",p.key,p.special)}
     }
     @Test fun frequentEmojiAreLimitedAndRanked(){
+        assertTrue("coffre ouvert",com.example.app_clavier.storage.KeyManager.unlock(context))
         EmojiHistory.clear(context)
         val entries=EmojiCatalog.all(context).take(24)
         entries.forEach{EmojiHistory.record(context,it.emoji)}

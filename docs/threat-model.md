@@ -143,3 +143,15 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 | I-10 Regard par-dessus l'épaule | **atténuée** : pas de surbrillance en champ sensible ni sur le pavé PIN ; pavé PIN mélangé (option) ; zones dynamiques coupées en champ sensible |
 | I-13 Service d'accessibilité | inchangée (inhérente) ; caractères annoncés « Point » en champ mot de passe |
 | D-1 Application cible lente | inchangée (phase 4, `RichInputConnection`) |
+
+## 8. Avancement (fin de phase 3)
+
+| Menace | État |
+|--------|------|
+| I-3 Secrets appris (S2) | **corrigée** : `LearningGate` est le seul point d'écriture (vérifié par `ArchitectureTest`), avec `SecretDetector` |
+| I-4 Presse-papiers (S3) | **corrigée** : chiffré, éphémère, copie sensible jamais écrite, effacement système optionnel |
+| I-5 Données au repos (S4) | **corrigée** : tout est chiffré (XChaCha20-Poly1305), clé maître Keystore, clé de données effacée à l'extinction de l'écran |
+| T-3 Altération des fichiers | **corrigée** : chiffrement authentifié avec contexte ; fichier altéré ou échangé rejeté (testé) |
+| T-5 Coupure pendant une écriture | **corrigée** : instantané atomique, fin de journal tronquée ignorée (testé) |
+| D-2 Fichier corrompu | **corrigée** : lecture bornée, aucune exception, instantané propre réécrit |
+| Fonctions innovantes n° 3, 4 et 6 | livrées |

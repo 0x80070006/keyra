@@ -13,6 +13,7 @@ import java.util.concurrent.Executors
 import com.example.app_clavier.keyboard.KeyboardLayouts
 import com.example.app_clavier.keyboard.KeyboardView
 import com.example.app_clavier.keyboard.LayoutState
+import com.example.app_clavier.security.LearningGate
 import kotlin.math.abs
 
 /** Layout positions are in the user's 684 px reference coordinate system. */
@@ -61,7 +62,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private var keyboardView:KeyboardView?=null
     /** Vrai quand l'écran courant est le mode frappe : un changement de Maj, de mode ou de suggestions ne reconstruit rien. */
     private var typingActive=false
-    private var passwordField=false;private var pinPad=false
+    private var passwordField=false;private var pinPad=false;private var incognito=false
     private var pinDigits:List<String>?=null
     private var slideReturnMode=0
     private val keyListener=object:KeyboardView.Listener{
@@ -75,6 +76,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         override fun onLongPress(code:String)=when(code){
             "shift"->{shifted=true;locked=true;lastShiftTap=0;refresh();true}
             " "->{action("picker");true}
+            "menu"->{panel="panic";rebuild();true}
             else->false
         }
         override fun onReplace(base:String,choice:String){
@@ -86,8 +88,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     override fun shouldDelayChildPressedState()=false
     override fun performClick():Boolean {super.performClick();return true}
     /** `privateInput` : ni historique ni surbrillance ; `password` : TalkBack dit « point » ; `pinPad` : pavé PIN. */
-    fun reset(numeric:Boolean,privateInput:Boolean,password:Boolean=false,pinPad:Boolean=false){
-        passwordField=password;this.pinPad=pinPad
+    fun reset(numeric:Boolean,privateInput:Boolean,password:Boolean=false,pinPad:Boolean=false,incognito:Boolean=false){
+        passwordField=password;this.pinPad=pinPad;this.incognito=incognito
         pinDigits=if(pinPad && prefs.getBoolean("pin_shuffle",false))(0..9).map{it.toString()}.shuffled(java.security.SecureRandom()) else null
         mode=if(pinPad)4 else if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;suggestions=emptyList();queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
     fun refreshTheme(){palette=KeyboardPrefs.palette(context);rebuild()}
@@ -222,6 +224,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             code.startsWith("suggest:") -> {action(code);suggestions=emptyList();refresh()}
             code.startsWith("clip:") -> {action(code);panel="";rebuild()}
             code=="clearclips" -> {action(code);rebuild()}
+            code.startsWith("clipPin:") || code.startsWith("clipDel:") -> {action(code);rebuild()}
+            code=="panic" -> action(code)
             code=="language" -> action("picker")
             else -> {
                 val literal=if(code.startsWith("char:"))code.removePrefix("char:") else code
@@ -274,7 +278,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         typingActive=true
         requestLayout()
     }
-    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,suggestions,if(mode==0)accents else null,if(mode==4)pinDigits else null))
+    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,suggestions,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito))
     /** Met à jour les touches sans reconstruire les vues, sauf si l'écran change de nature (panneau, emoji). */
     private fun refresh(){
         val view=keyboardView
@@ -320,7 +324,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
                 contentDescription=if(value.isEmpty())"" else "Récent $value"
                 setOnClickListener{if(text.isNotEmpty()){
                     val chosen=text.toString();action(chosen)
-                    if(!secure){EmojiHistory.record(context,chosen);refreshRecent()}
+                    LearningGate.emoji(context,!secure,chosen);if(!secure)refreshRecent()
                 }}
             }
             recentViews.add(cell)
@@ -339,7 +343,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         val all=EmojiCatalog.all(context)
         val categories=listOf("Tous")+all.map{it.category}.distinct()
         val symbols=listOf("◷","☺︎","♙","♧","♨","⌖","⚽︎","♫","♡","⚑")
-        fun choose(emoji:String){action(emoji);if(!secure){EmojiHistory.record(context,emoji);refreshRecent()}}
+        fun choose(emoji:String){action(emoji);LearningGate.emoji(context,!secure,emoji);if(!secure)refreshRecent()}
         fun grid(entries:List<EmojiCatalog.Entry>,x:Int,y:Int,w:Int,h:Int){
             val view=GridView(context).apply {
                 numColumns=8;verticalSpacing=0;horizontalSpacing=0;isVerticalScrollBarEnabled=true
@@ -435,6 +439,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             button("delete","delete",575,768,100,65,true)
         }
     }
+    private fun clipLabel(clip:ClipboardHistory.Clip)=(if(clip.pinned)"📌 " else "")+clip.text.replace('\n',' ').take(160)
     private fun card(text:String,code:String,index:Int){button(text,code,40+(index%2)*310,120+(index/2)*110,294,92,round=true,small=true)}
     private fun buildPanel() {
         when(panel) {
@@ -461,20 +466,25 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
                 button("Personnaliser les couleurs","themes",60,485,564,54,small=true)
             }
             "clipboard" -> {
-                add(label(if(secure)"Historique masqué dans ce champ privé" else "20 dernières copies en texte. Touche un élément pour le coller.",15f),30,95,624,55)
+                add(label(if(secure)"Historique masqué dans ce champ privé" else "Copies récentes, chiffrées et éphémères. Toucher : coller · appui long : épingler · × : supprimer.",15f),30,95,624,55)
                 if(!secure){
-                    val clips=ClipboardHistory.items(context)
+                    val clips=ClipboardHistory.entries(context)
                     val scroll=ScrollView(context)
                     val list=LinearLayout(context).apply{orientation=LinearLayout.VERTICAL}
                     if(clips.isEmpty())list.addView(label("Aucune copie enregistrée pendant l’utilisation du clavier",14f))
                     clips.forEachIndexed{i,entry->
+                        val row=LinearLayout(context).apply{setBackgroundColor(palette.key)}
                         val item=TextView(context).apply {
-                            text=entry.replace('\n',' ').take(160);maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END
+                            text=clipLabel(entry);maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END
                             textSize=16f;setTextColor(palette.text);setPadding(18,12,18,12)
-                            setBackgroundColor(palette.key);contentDescription="Coller copie ${i+1}"
+                            contentDescription="Coller copie ${i+1}"
                             setOnClickListener{press("clip:$i")}
+                            setOnLongClickListener{press("clipPin:$i");true}
                         }
-                        list.addView(item,LinearLayout.LayoutParams(-1,(66*resources.displayMetrics.density).toInt()).apply{setMargins(0,2,0,2)})
+                        val remove=label("×",22f).apply{contentDescription="Supprimer copie ${i+1}";setOnClickListener{press("clipDel:$i")}}
+                        row.addView(item,LinearLayout.LayoutParams(0,-1,1f))
+                        row.addView(remove,LinearLayout.LayoutParams((48*resources.displayMetrics.density).toInt(),-1))
+                        list.addView(row,LinearLayout.LayoutParams(-1,(66*resources.displayMetrics.density).toInt()).apply{setMargins(0,2,0,2)})
                     }
                     scroll.addView(list);add(scroll,30,157,624,303)
                     button("Effacer l’historique","clearclips",190,475,304,50,small=true)
@@ -517,6 +527,17 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
                 button("Traduire la sélection / phrase","translationRun",40,410,392,62,true,true,small=true)
                 button("Remplacer","translationInsert",445,410,199,62,true,true,small=true)
                 add(label("Modèle local léger FR ↔ EN · aucun réseau",14f),80,475,524,35)
+            }
+            "panic" -> {
+                add(label("Geste panique\n\nEfface tout de suite et définitivement les mots appris, les mots personnels, les emoji récents, l’historique du presse-papiers et tes choix incognito. La clé de chiffrement est détruite : rien ne pourra être récupéré.",16f).apply{gravity=Gravity.CENTER_VERTICAL or Gravity.START;setPadding(18,0,18,0)},30,95,624,250)
+                add(label("Glisse le curseur jusqu’au bout pour confirmer",15f),30,355,624,40)
+                val confirm=SeekBar(context).apply{max=100;contentDescription="Glisser pour tout effacer"}
+                confirm.setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
+                    override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){}
+                    override fun onStartTrackingTouch(s:SeekBar?){}
+                    override fun onStopTrackingTouch(s:SeekBar?){if(confirm.progress>=confirm.max)press("panic") else confirm.progress=0}
+                })
+                add(confirm,60,400,564,70)
             }
             "privacy" -> {
                 val privacy="""Confidentialité de Keyra
