@@ -184,7 +184,7 @@ class MintInputService:InputMethodService(){
             key in listOf("settings","themes","correction") -> startActivity(Intent(this,SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("section",key))
             key=="voice" || key=="media" -> {
                 if(if(key=="voice")!policy.allowVoice else policy.isPassword){Toast.makeText(this,"Indisponible dans un champ privé",Toast.LENGTH_SHORT).show();return}
-                startActivity(Intent(this,MediaInputActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("kind",key).putExtra("target",currentInputEditorInfo?.packageName))
+                startActivity(Intent(this,MediaInputActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("kind",key).putExtra("target",currentInputEditorInfo?.packageName).putExtra("field",currentInputEditorInfo?.fieldId ?: 0))
             }
             key.startsWith("translate:") -> requestTranslation(key.substringAfter(':'))
             key=="translationInsert" -> {
@@ -235,8 +235,9 @@ class MintInputService:InputMethodService(){
     }
     private fun applyPending(){
         val pending=PendingInput.result ?: return
+        if(SystemClock.elapsedRealtime()-pending.createdAt>PendingInput.MAX_AGE_MS){PendingInput.result=null;return}
         val info=currentInputEditorInfo ?: return
-        if(info.packageName!=pending.target)return
+        if(info.packageName!=pending.target || info.fieldId!=pending.field)return
         PendingInput.result=null
         if(secure)return
         pending.text?.let{currentInputConnection?.commitText(it,1)}

@@ -13,7 +13,8 @@ class SettingsActivity:Activity(){
     private companion object { const val pickBackground=410 }
     private val prefs by lazy{KeyboardPrefs.of(this)}
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
-    override fun onCreate(state:Bundle?){super.onCreate(state);render()}
+    // Affiche les mots personnels : jamais dans les captures ni dans la vue des applications récentes (S6).
+    override fun onCreate(state:Bundle?){super.onCreate(state);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);render()}
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
         super.onActivityResult(requestCode,resultCode,data)
         val uri=data?.data ?: return
