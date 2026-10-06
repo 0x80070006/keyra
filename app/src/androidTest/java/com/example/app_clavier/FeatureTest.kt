@@ -11,21 +11,24 @@ import org.junit.Assert.*
 class FeatureTest {
     private val instrumentation=InstrumentationRegistry.getInstrumentation()
     private val context=instrumentation.targetContext
+    /** Moteur Rust (phase 5) : correction pondérée AZERTY, complétions, noms propres intacts, vitesse. */
     @Test fun frenchCorrectionAndLatency(){
-        val engine=FrenchCorrector(context.assets.open("fr_frequency.txt").reader())
-        assertTrue(engine.wordCount>40000)
+        val engine=com.example.app_clavier.engine.Predictor
+        assertTrue(engine.load(context))
         assertTrue(engine.contains("bonjour"))
         assertNull(engine.correction("bonjour",100))
         assertNull(engine.correction("bonjour",0))
         assertNull(engine.correction("Paris",100))
-        assertTrue(engine.candidates("bonjor",55).any{it.word=="bonjour"})
         assertEquals("bonjour",engine.correction("bonjor",80))
-        assertTrue(engine.candidates("bonjuor",55).any{it.word=="bonjour" && it.distance==1})
+        assertEquals("bonjour",engine.correction("bonjuor",55))
+        assertEquals("venir",engine.correction("vnir",55))
+        assertTrue(engine.analyze("bonj",55)!!.suggestions.contains("bonjour"))
+        assertEquals("emoji pour « cœur »",true,EmojiCatalog.forWord(context,"cœur")!=null)
         val start=System.nanoTime()
-        repeat(20){engine.candidates("bonjor",55)}
-        val ms=(System.nanoTime()-start)/1_000_000.0/20
-        println("Corrector words=${engine.wordCount}; average lookup=${ms}ms")
-        assertTrue("Lookup should stay below 150 ms on emulator, got $ms",ms<150)
+        repeat(50){engine.analyze("bonjor",55)}
+        val ms=(System.nanoTime()-start)/1_000_000.0/50
+        println("Moteur Rust : analyse moyenne ${ms} ms")
+        assertTrue("Analyse trop lente sur l'émulateur : $ms ms",ms<20)
     }
     @Test fun completeEmojiDataset(){
         val list=EmojiCatalog.all(context)

@@ -28,3 +28,4 @@ Format : contexte, décision, conséquences, considérations de sécurité. Un A
 | [0022](0022-dependances-rust.md) | Dépendances Rust | accepté |
 | [0023](0023-chaine-de-build-rust.md) | Chaîne de build Rust | accepté |
 | [0024](0024-coffre-xchacha20-en-rust.md) | Coffre XChaCha20-Poly1305 en Rust | accepté |
+| [0025](0025-moteur-de-prediction-rust.md) | Moteur de prédiction en Rust | accepté |

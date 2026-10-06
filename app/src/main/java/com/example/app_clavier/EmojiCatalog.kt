@@ -21,5 +21,22 @@ object EmojiCatalog {
         if(tokens.isEmpty())return all(c)
         return all(c).filter{entry->tokens.all{it in entry.search}}
     }
+    /** Mot d'une seule annotation CLDR française → l'emoji le plus spécifique (celui qui a le moins d'annotations). */
+    @Volatile private var byWord:Map<String,String>?=null
+    @Synchronized private fun wordIndex(c:Context):Map<String,String> {
+        byWord?.let{return it}
+        val best=HashMap<String,Pair<String,Int>>()
+        c.assets.open("emoji_search_fr.tsv").bufferedReader().useLines{rows->rows.forEach{row->
+            val parts=row.split('\t',limit=2);if(parts.size<2)return@forEach
+            val terms=parts[1].split(" | ")
+            terms.filter{' ' !in it && it.length>=3}.forEach{term->
+                val key=fold(term)
+                if(best[key]?.second?.let{it<=terms.size}!=true)best[key]=parts[0] to terms.size
+            }
+        }}
+        return best.mapValues{it.value.first}.also{byWord=it}
+    }
+    /** Suggestion d'emoji (SwiftKey) pour un mot tapé, ou null. */
+    fun forWord(c:Context,word:String):String? = if(word.length<3)null else wordIndex(c)[fold(word)]
     private fun fold(value:String)=Normalizer.normalize(value.lowercase(Locale.FRENCH).replace("œ","oe").replace("æ","ae"),Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"")
 }

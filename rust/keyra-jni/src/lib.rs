@@ -11,19 +11,115 @@
 //! Les tests de ce pont sont des tests instrumentés Android (`KeyraCoreTest`, `VaultTest`) : ils passent par la vraie JVM.
 
 use jni_sys::{JNIEnv, jboolean, jbyte, jbyteArray, jclass, jint, jsize};
+use keyra_core::predict::{Engine, MAX_DICTIONARY_BYTES};
 use keyra_core::vault::{JournalEnd, MAX_FILE, MAX_RECORD, Vault};
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::Mutex;
+use std::sync::{Mutex, RwLock};
 use zeroize::Zeroize;
 
 /// Valeur renvoyée en cas d'échec : entrée nulle, trop grande, non UTF-8, exception JVM ou panique.
 pub const ERROR: jint = -1;
 
 /// Version du contrat entre la bibliothèque native et `KeyraCore.kt`. À incrémenter à chaque changement de signature.
-pub const ABI_VERSION: jint = 2;
+pub const ABI_VERSION: jint = 3;
 
 /// Coffre unique du processus : `None` tant que l'appareil n'a pas été déverrouillé, ou après `vaultLock`.
 static VAULT: Mutex<Option<Vault>> = Mutex::new(None);
+
+/// Moteur de prédiction (dictionnaire en lecture seule après chargement), partagé entre les fils.
+static ENGINE: RwLock<Option<Engine>> = RwLock::new(None);
+
+/// Copie un mot tapé (UTF-8, 256 octets au plus), applique `f`, puis efface la copie.
+fn with_word<T>(env: *mut JNIEnv, word: jbyteArray, f: impl FnOnce(&Engine, &str) -> Option<T>) -> Option<T> {
+    let mut bytes = copy_byte_array(env, word, 256)?;
+    let result = std::str::from_utf8(&bytes).ok().and_then(|text| {
+        let guard = ENGINE.read().ok()?;
+        guard.as_ref().and_then(|engine| f(engine, text))
+    });
+    bytes.zeroize();
+    result
+}
+
+/// `KeyraCore.engineLoad(dictionary: ByteArray): Int` — nombre de mots chargés, ou [`ERROR`].
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_engineLoad(
+    env: *mut JNIEnv,
+    _class: jclass,
+    dictionary: jbyteArray,
+) -> jint {
+    catch_unwind(AssertUnwindSafe(|| {
+        let bytes = copy_byte_array(env, dictionary, MAX_DICTIONARY_BYTES)?;
+        let engine = Engine::from_text(std::str::from_utf8(&bytes).ok()?);
+        let count = jint::try_from(engine.len()).ok()?;
+        *ENGINE.write().ok()? = Some(engine);
+        Some(count)
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(ERROR)
+}
+
+/// `KeyraCore.engineAnalyze(word, tolerance, limit): ByteArray?` — UTF-8 :
+/// première ligne = correction (vide : aucune), puis une ligne `mot<tab>complétion(0|1)` par suggestion.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_engineAnalyze(
+    env: *mut JNIEnv,
+    _class: jclass,
+    word: jbyteArray,
+    tolerance: jint,
+    limit: jint,
+) -> jbyteArray {
+    catch_unwind(AssertUnwindSafe(|| {
+        let tolerance = u32::try_from(tolerance).unwrap_or(0).min(100);
+        let limit = usize::try_from(limit).unwrap_or(0).min(16);
+        let mut out = with_word(env, word, |engine, text| {
+            let (candidates, correction) = engine.analyze(text, tolerance, limit);
+            let mut out = correction.unwrap_or_default();
+            for c in candidates {
+                out.push('\n');
+                out.push_str(&c.word);
+                out.push_str(if c.completion { "\t1" } else { "\t0" });
+            }
+            Some(out.into_bytes())
+        })?;
+        let array = new_byte_array(env, &out);
+        out.zeroize();
+        array
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `KeyraCore.engineContains(word): Boolean`
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_engineContains(
+    env: *mut JNIEnv,
+    _class: jclass,
+    word: jbyteArray,
+) -> jboolean {
+    let known = catch_unwind(AssertUnwindSafe(|| {
+        with_word(env, word, |engine, text| Some(engine.contains(text))).unwrap_or(false)
+    }))
+    .unwrap_or(false);
+    jboolean::from(known)
+}
+
+/// `KeyraCore.engineNextLetters(prefix): ByteArray?` — 26 octets : probabilité (0 à 255) de chaque lettre a–z.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_engineNextLetters(
+    env: *mut JNIEnv,
+    _class: jclass,
+    prefix: jbyteArray,
+) -> jbyteArray {
+    catch_unwind(AssertUnwindSafe(|| {
+        let probabilities = with_word(env, prefix, |engine, text| Some(engine.next_letters(text)))?;
+        new_byte_array(env, &probabilities)
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
+}
 
 fn with_vault<T>(f: impl FnOnce(&Vault) -> Option<T>) -> Option<T> {
     let guard = VAULT.lock().ok()?;

@@ -18,6 +18,8 @@ class InputLogic(private val target:TextTarget,private val host:Host){
         fun isPersonal(word:String):Boolean
         /** Passe par LearningGate. */
         fun learn(word:String)
+        /** Paire de mots consécutifs, via LearningGate. */
+        fun learnPair(previous:String,word:String)
         fun now():Long
     }
     private class Undo(val original:String,val corrected:String,val delimiter:String)
@@ -80,9 +82,13 @@ class InputLogic(private val target:TextTarget,private val host:Host){
             undo=if(finalWord!=word)Undo(word,finalWord,d) else null
         }
         if(word.isNotEmpty()){
-            lastCompletedWord=finalLower(undo?.corrected ?: word)
+            val completed=finalLower(undo?.corrected ?: word)
+            if(lastCompletedWord.isNotEmpty())host.learnPair(lastCompletedWord,completed)
+            lastCompletedWord=completed
             if(undo==null && word.length>=2 && !host.isKnown(word))host.learn(word)
         }
+        // Fin de phrase : le mot suivant ne se rattache pas au précédent.
+        if(d=="." || d=="!" || d=="?" || d=="\n")lastCompletedWord=""
         lastSpaceAt=if(d==" ")now else 0L
     }
 

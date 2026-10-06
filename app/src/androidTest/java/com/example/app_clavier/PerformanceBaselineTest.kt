@@ -109,15 +109,20 @@ class PerformanceBaselineTest {
 
     @Test fun correctorCostOnDevice(){
         val context=KeyboardTestKit().context
+        val engine=com.example.app_clavier.engine.Predictor
+        // Chargement réel (même si un autre test l'a déjà fait) : lecture de l'asset et construction du trie en Rust.
         val loadStart=System.nanoTime()
-        val engine=FrenchCorrector(context.assets.open("fr_frequency.txt").reader())
+        val bytes=context.assets.open("fr_frequency.txt").use{it.readBytes()}
+        assertTrue(com.example.app_clavier.core.KeyraCore.loadEngine(bytes)>40_000)
         val loadMs=(System.nanoTime()-loadStart)/1_000_000.0
+        assertTrue(engine.load(context))
         val words="bonjour je tetse la frappe rapdie sur ce clavier pour mesurer chaque imgae dessinee pendnat une saisie normale".split(' ')
         val prefixes=words.flatMap{w->(2..w.length).map{w.take(it)}}
-        repeat(3){prefixes.forEach{engine.candidates(it,55);engine.correction(it,55)}}
-        val samples=prefixes.map{p->val s=System.nanoTime();engine.candidates(p,55);engine.correction(p,55);System.nanoTime()-s}.sorted()
+        repeat(3){prefixes.forEach{engine.analyze(it,55)}}
+        val samples=prefixes.map{p->val s=System.nanoTime();engine.analyze(p,55);System.nanoTime()-s}.sorted()
         fun at(q:Double)=samples[((samples.size-1)*q).toInt()]/1_000_000.0
         Log.i("KeyraBaseline","dictionnaire chargé en %.0f ms ; coût par frappe p50 %.2f ms, p95 %.2f ms, max %.2f ms (%d préfixes)"
             .format(loadMs,at(.5),at(.95),at(1.0),samples.size))
+        assertTrue("p95 : ${at(.95)} ms",at(.95)<10.0)
     }
 }

@@ -135,6 +135,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
                 }
                 key.code==" "->timers.postDelayed(t.longPress,settings.longPressMs)
                 key.code=="menu"->timers.postDelayed(t.longPress,PANIC_HOLD_MS) // 3 s sur la touche menu : geste panique
+                key.code.startsWith("suggest:")->timers.postDelayed(t.longPress,settings.longPressMs) // masquer cette suggestion
             }
         }
         invalidate()
@@ -297,7 +298,9 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         val fg=if(lit)KeyboardPrefs.ink(palette.specialText) else if(k.active)palette.special else if(k.special)palette.specialText else palette.text
         val icon=ICONS[k.label]
         if(icon!=null){drawIcon(canvas,k.label,icon,fg);return}
+        ink.isFakeBoldText=k.bold
         drawText(canvas,k.label,size*u,u,fg)
+        ink.isFakeBoldText=false
         if(k.hint!=null){ink.textAlign=Paint.Align.RIGHT;ink.textSize=17*u;ink.color=fg;canvas.drawText(k.hint,box.right-6*u,box.top+20*u,ink)}
     }
 

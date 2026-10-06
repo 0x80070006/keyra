@@ -92,3 +92,13 @@ Ces lignes du tableau ne peuvent pas être prises sur l'émulateur :
 | Correcteur (inchangé, phase 5) | p95 33 ms, chargement environ 10 s (debug, émulateur) | identique |
 
 Détails : `docs/phase-2-rapport.md`.
+
+### Phase 5 (2026-10-06, émulateur Pixel 9a) — moteur Rust
+
+| Mesure | Phase 0 | Phase 5 | Cible |
+|--------|---------|---------|-------|
+| Coût par frappe, p50 / p95 | 8,0 / 32,9 ms | **0,53 / 1,53 ms** | p95 ≤ 3 ms ✅ |
+| Chargement du dictionnaire | ≈ 10 000 ms | **117 ms** | ≤ 150 ms ✅ |
+| Corrections justes / fausses | 79,5 % / 4,0 % | **83,5 % / 1,5 %** | mieux ✅ |
+| Lettres oubliées corrigées | 24,1 % | **58,6 %** | — |
+| Sur-correction hors dictionnaire | 4,5 % | **1,5 %** | 0 % (presque) |

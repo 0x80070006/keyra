@@ -13,6 +13,7 @@ import java.util.concurrent.Executors
 import com.example.app_clavier.keyboard.KeyboardLayouts
 import com.example.app_clavier.keyboard.KeyboardView
 import com.example.app_clavier.keyboard.LayoutState
+import com.example.app_clavier.keyboard.Strip
 import com.example.app_clavier.security.LearningGate
 import kotlin.math.abs
 
@@ -39,8 +40,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private var panel="";private var page=0
     private var shifted=false;private var locked=false;private var secure=false
     private var accents:String?=null
-    private var suggestions=emptyList<String>()
-    private var queuedSuggestions:List<String>?=null
+    private var strip=Strip.EMPTY
+    private var queuedSuggestions:Strip?=null
     private var lastInputDown=0L
     private var touching=false
     private var category="Tous"
@@ -81,7 +82,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             "shift"->{shifted=true;locked=true;lastShiftTap=0;refresh();true}
             " "->{action("picker");true}
             "menu"->{panel="panic";rebuild();true}
-            else->false
+            else->if(code.startsWith("suggest:")){action("block:"+code.substringAfter(':'));strip=Strip.EMPTY;refresh();true} else false
         }
         override fun onReplace(base:String,choice:String){
             action("replaceLong:$base:${if(shifted && choice.length==1 && choice[0].isLetter())choice.uppercase() else choice}")
@@ -95,7 +96,13 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     fun reset(numeric:Boolean,privateInput:Boolean,password:Boolean=false,pinPad:Boolean=false,incognito:Boolean=false){
         passwordField=password;this.pinPad=pinPad;this.incognito=incognito
         pinDigits=if(pinPad && prefs.getBoolean("pin_shuffle",false))(0..9).map{it.toString()}.shuffled(java.security.SecureRandom()) else null
-        mode=if(pinPad)4 else if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;suggestions=emptyList();queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
+        mode=if(pinPad)4 else if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;strip=Strip.EMPTY;queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
+    /** Zones de toucher dynamiques : probabilité (0 à 255) de chaque lettre a–z, ou null pour les couper. */
+    fun setLetterBias(probabilities:ByteArray?){
+        keyboardView?.bias=probabilities?.let{p->{k:com.example.app_clavier.keyboard.KeyDef->
+            val c=k.code.singleOrNull()
+            if(c!=null && c in 'a'..'z')(p[c-'a'].toInt() and 0xFF)/255f else 0f}}
+    }
     /** Majuscule automatique demandée par le service (début de phrase…). N'annule jamais une Maj de l'utilisateur. */
     fun setAutoShift(on:Boolean){
         if(locked || mode!=0 || panel.isNotEmpty())return
@@ -118,17 +125,17 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             queuedSuggestions=null;applySuggestions(queued)
         }
     }
-    fun showSuggestions(values:List<String>):Boolean{
+    fun showSuggestions(values:Strip):Boolean{
         queuedSuggestions=values
         val remaining=90-(android.os.SystemClock.uptimeMillis()-lastInputDown)
         if(touching || remaining>0){touchHandler.removeCallbacks(renderSuggestions);touchHandler.postDelayed(renderSuggestions,remaining.coerceAtLeast(20));return true}
         queuedSuggestions=null
         return applySuggestions(values)
     }
-    private fun applySuggestions(values:List<String>)=traced("Keyra.suggestionStrip"){replaceSuggestions(values)}
-    private fun replaceSuggestions(values:List<String>):Boolean{
-        if(values==suggestions)return true
-        suggestions=values
+    private fun applySuggestions(values:Strip)=traced("Keyra.suggestionStrip"){replaceSuggestions(values)}
+    private fun replaceSuggestions(values:Strip):Boolean{
+        if(values==strip)return true
+        strip=values
         if(panel.isEmpty() && mode==0 && accents==null)refresh()
         return true
     }
@@ -232,7 +239,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             code.startsWith("theme:") -> {prefs.edit().putString("theme",code.substringAfter(':')).apply();refreshTheme()}
             code.startsWith("hand:") -> {val chosen=code.substringAfter(':').toInt();val next=if(prefs.getInt("hand",0)==chosen)0 else chosen;prefs.edit().putInt("hand",next).apply();rebuild()}
             code=="resetSize" -> {prefs.edit().putInt("height",100).putInt("hand",0).apply();rebuild()}
-            code.startsWith("suggest:") -> {action(code);suggestions=emptyList();refresh()}
+            code.startsWith("suggest:") || code.startsWith("suggestTyped:") || code.startsWith("emojiSuggest:") -> {action(code);strip=Strip.EMPTY;refresh()}
             code.startsWith("clip:") -> {action(code);panel="";rebuild()}
             code=="clearclips" -> {action(code);rebuild()}
             code.startsWith("clipPin:") || code.startsWith("clipDel:") -> {action(code);rebuild()}
@@ -250,8 +257,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         button(if(panel.isEmpty())"menu" else "close","menu",8,15,58,62,true,true)
         if(panel.isEmpty() && mode==0 && accents!=null) {
             accents!!.forEachIndexed{i,ch->button(ch.toString(),"char:$ch",80+i*72,15,64,62)}
-        } else if(panel.isEmpty() && mode==0 && suggestions.isNotEmpty()) {
-            suggestions.take(3).forEachIndexed{i,s->button(s,"suggest:$s",80+i*176,15,166,62,small=true)}
+        } else if(panel.isEmpty() && mode==0 && !strip.isEmpty) {
+            listOf(strip.left,strip.center,strip.right).forEachIndexed{i,item->if(item!=null)button(item.label,item.code,80+i*176,15,166,62,small=true)}
         } else {
             button("clipboard","panel:clipboard",159,15,58,62,transparent=true)
             button("accents","accents",310,15,58,62,small=true,transparent=true)
@@ -293,7 +300,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         typingActive=true
         requestLayout()
     }
-    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,suggestions,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito))
+    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,strip,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito))
     /** Met à jour les touches sans reconstruire les vues, sauf si l'écran change de nature (panneau, emoji). */
     private fun refresh(){
         val view=keyboardView
