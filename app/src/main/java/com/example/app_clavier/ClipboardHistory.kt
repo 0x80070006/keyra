@@ -4,6 +4,7 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import com.example.app_clavier.security.SecretDetector
 import org.json.JSONArray
 
 /** Stores only explicit plain text clips, in app-private storage, without Android backup. */
@@ -22,6 +23,8 @@ object ClipboardHistory {
         val clip=manager.primaryClip ?: return
         if(clip.itemCount<1)return
         val value=clip.getItemAt(0).text?.toString()?.take(MAX_CHARS)?.takeIf{it.isNotBlank()} ?: return
+        // Carte, IBAN, code, clé d'API, mot de passe probable : jamais écrit sur disque (échec fermé si le cœur Rust échoue).
+        if(SecretDetector.isSecret(value))return
         val updated=ArrayList<String>(MAX_ITEMS)
         updated.add(value)
         items(context).filterTo(updated){it!=value && updated.size<MAX_ITEMS}
