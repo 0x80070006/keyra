@@ -44,9 +44,9 @@ class MintInputService:InputMethodService(){
     override fun onCreate(){
         super.onCreate();prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         worker.execute{
-            EmojiCatalog.all(this)
-            corrector=FrenchCorrector(assets.open("fr_frequency.txt").reader())
-            translator=OfflineTranslator(assets.open("offline_translation_fr_en.tsv").reader())
+            traced("Keyra.emojiLoad"){EmojiCatalog.all(this)}
+            corrector=traced("Keyra.dictionaryLoad"){FrenchCorrector(assets.open("fr_frequency.txt").reader())}
+            translator=traced("Keyra.translatorLoad"){OfflineTranslator(assets.open("offline_translation_fr_en.tsv").reader())}
             if(!destroyed)main.post{scheduleSuggestions()}
         }
     }
@@ -54,8 +54,8 @@ class MintInputService:InputMethodService(){
     override fun onCreateInputView():View=MintKeyboard(this,::handle).also{keyboard=it;configure(currentInputEditorInfo)}
     override fun onEvaluateFullscreenMode()=false
     override fun onStartInput(info:EditorInfo?,restarting:Boolean){super.onStartInput(info,restarting);session++;generation++;undo=null;queuedKeys.clear();suggestionWord="";suggestedCorrection=null;lastCompletedWord="";pendingTranslation=null;currentCursor=info?.initialSelEnd ?: -1;configure(info)}
-    override fun onStartInputView(info:EditorInfo?,restarting:Boolean){super.onStartInputView(info,restarting);configure(info);flushQueuedKeys();applyPending()}
-    override fun onWindowShown(){super.onWindowShown();keyboard?.refreshTheme();if(!clipboardListening){clipboard.addPrimaryClipChangedListener(clipboardListener);clipboardListening=true};if(!secure)ClipboardHistory.capture(this,clipboard);flushQueuedKeys();applyPending()}
+    override fun onStartInputView(info:EditorInfo?,restarting:Boolean)=traced("Keyra.startInputView"){super.onStartInputView(info,restarting);configure(info);flushQueuedKeys();applyPending()}
+    override fun onWindowShown()=traced("Keyra.windowShown"){super.onWindowShown();keyboard?.refreshTheme();if(!clipboardListening){clipboard.addPrimaryClipChangedListener(clipboardListener);clipboardListening=true};if(!secure)ClipboardHistory.capture(this,clipboard);flushQueuedKeys();applyPending()}
     override fun onWindowHidden(){if(clipboardListening){clipboard.removePrimaryClipChangedListener(clipboardListener);clipboardListening=false};super.onWindowHidden()}
     override fun onFinishInput(){generation++;session++;undo=null;queuedKeys.clear();main.removeCallbacks(suggestionRunnable);super.onFinishInput()}
     override fun onUpdateSelection(oldSelStart:Int,oldSelEnd:Int,newSelStart:Int,newSelEnd:Int,candidatesStart:Int,candidatesEnd:Int){
@@ -95,14 +95,16 @@ class MintInputService:InputMethodService(){
         val tolerance=prefs.getInt("tolerance",55)
         worker.execute {
             if(id!=generation)return@execute
-            val learned=UserLexicon.suggestions(this,word).map{if(word.contains('’'))it.replace('\'','’') else it}
-            val candidates=engine.candidates(word,tolerance)
-            val choices=(learned+candidates.map{it.word}).distinct().take(3)
-            val correction=engine.correction(word,tolerance)
+            val (choices,correction)=traced("Keyra.suggest"){
+                val learned=UserLexicon.suggestions(this,word).map{if(word.contains('’'))it.replace('\'','’') else it}
+                val candidates=engine.candidates(word,tolerance)
+                (learned+candidates.map{it.word}).distinct().take(3) to engine.correction(word,tolerance)
+            }
             main.post{if(id==generation && !destroyed && keyboard?.showSuggestions(choices)==true){suggestionWord=word;suggestedCorrection=correction}}
         }
     }
-    private fun delimiter(value:String){
+    private fun delimiter(value:String)=traced("Keyra.delimiter"){commitDelimiter(value)}
+    private fun commitDelimiter(value:String){
         val ic=currentInputConnection ?: return
         val before=ic.getTextBeforeCursor(80,0)?.toString() ?: ""
         if(value==" " && before.endsWith(' ') && before.dropLast(1).lastOrNull()?.isLetter()==true && prefs.getBoolean("double_space_period",true)){
@@ -154,7 +156,8 @@ class MintInputService:InputMethodService(){
             if(next.session==session)handle(next.key)
         }
     }
-    private fun handle(key:String){
+    private fun handle(key:String)=traced("Keyra.handleKey"){handleKey(key)}
+    private fun handleKey(key:String){
         val ic=currentInputConnection
         if(ic==null){if(queuedKeys.size>=96)queuedKeys.removeFirst();queuedKeys.addLast(QueuedKey(session,key));return}
         when {

@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "app_Clavier"
 include(":app")
+include(":benchmark")
