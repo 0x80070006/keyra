@@ -8,13 +8,23 @@ import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
 import android.widget.*
+import com.example.app_clavier.security.IncognitoApps
+import com.example.app_clavier.security.Panic
+import com.example.app_clavier.storage.KeyManager
+import com.example.app_clavier.storage.Migration11to12
 
 class SettingsActivity:Activity(){
     private companion object { const val pickBackground=410 }
     private val prefs by lazy{KeyboardPrefs.of(this)}
     private fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
     // Affiche les mots personnels : jamais dans les captures ni dans la vue des applications récentes (S6).
-    override fun onCreate(state:Bundle?){super.onCreate(state);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);render()}
+    override fun onCreate(state:Bundle?){
+        super.onCreate(state);window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // Réglages ouverts : l'appareil est déverrouillé, on ouvre le coffre (une opération Keystore).
+        vaultOpen=KeyManager.unlock(this);if(vaultOpen)Migration11to12.run(this)
+        render()
+    }
+    private var vaultOpen=false
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){
         super.onActivityResult(requestCode,resultCode,data)
         val uri=data?.data ?: return
@@ -44,8 +54,8 @@ class SettingsActivity:Activity(){
         })})
         text("Prudent exige une forte confiance. Plus tolérant accepte davantage d’erreurs, dont deux lettres sur les mots longs. Les mots déjà reconnus, les noms commençant par une majuscule, les adresses et les mots de passe ne sont pas corrigés. Ce correcteur traite l’orthographe, pas la grammaire.",14f)
         text("Mots personnels à conserver",18f)
-        val personal=EditText(this).apply{hint="Un mot par ligne";setTextColor(p.text);setHintTextColor(p.text);minLines=2;maxLines=5;setText(prefs.getString("personal",""));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE}
-        root.addView(personal);button("Enregistrer mes mots"){prefs.edit().putString("personal",personal.text.toString()).apply();Toast.makeText(this,"Mots enregistrés sur ce téléphone",Toast.LENGTH_SHORT).show()}
+        val personal=EditText(this).apply{hint="Un mot par ligne";setTextColor(p.text);setHintTextColor(p.text);minLines=2;maxLines=5;setText(PersonalWords.asText(this@SettingsActivity));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE}
+        root.addView(personal);button("Enregistrer mes mots"){if(PersonalWords.replaceFromText(this,personal.text.toString()))Toast.makeText(this,"Mots enregistrés, chiffrés, sur ce téléphone",Toast.LENGTH_SHORT).show() else Toast.makeText(this,"Coffre fermé : déverrouille le téléphone",Toast.LENGTH_SHORT).show()}
         text("Saisie et réactivité",21f)
         root.addView(Switch(this).apply{text="Retour haptique à chaque touche";setTextColor(p.text);isChecked=prefs.getBoolean("haptic",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("haptic",v).apply()}})
         root.addView(Switch(this).apply{text="Deux espaces insèrent un point";setTextColor(p.text);isChecked=prefs.getBoolean("double_space_period",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("double_space_period",v).apply()}})
@@ -107,8 +117,33 @@ class SettingsActivity:Activity(){
         blurControl("Flou du fond","background_blur",8)
         blurControl("Flou des touches","key_blur",18)
         button("Retirer l’image personnalisée"){prefs.edit().remove("background_uri").putString("theme","brown").apply();render()}
+        text("Coffre chiffré",21f)
+        text(if(vaultOpen)"Mots appris, mots personnels, emoji récents, presse-papiers et choix incognito sont chiffrés (XChaCha20-Poly1305). La clé de données est enveloppée par une clé du Keystore Android de niveau : ${KeyManager.securityLevel()}, inutilisable quand le téléphone est verrouillé. Elle est effacée de la mémoire dès que l’écran s’éteint."
+            else "Coffre fermé : déverrouille le téléphone pour gérer tes données.",14f)
+        text("Presse-papiers éphémère",18f)
+        val ttlChoices=listOf(5 to "5 minutes",60 to "1 heure",1440 to "1 jour",0 to "jamais")
+        val ttlRow=LinearLayout(this)
+        ttlChoices.forEach{(minutes,title)->ttlRow.addView(Button(this).apply{
+            text=if(prefs.getInt("clip_ttl_min",60)==minutes)"✓ $title" else title;isAllCaps=false;textSize=12f;setTextColor(p.text)
+            backgroundTintList=android.content.res.ColorStateList.valueOf(p.key)
+            setOnClickListener{prefs.edit().putInt("clip_ttl_min",minutes).apply();render()}
+        },LinearLayout.LayoutParams(0,dp(56),1f).apply{setMargins(dp(2),dp(2),dp(2),dp(2))})}
+        root.addView(ttlRow)
+        text("Durée de vie d’une copie dans l’historique (les copies épinglées restent). Une copie sensible — mot de passe, carte, IBAN, code, clé — n’est jamais enregistrée.",14f)
+        root.addView(Switch(this).apply{setText(R.string.setting_clear_sensitive);setTextColor(p.text);isChecked=prefs.getBoolean("clear_sensitive_clip",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("clear_sensitive_clip",v).apply()}})
+        text("Applications incognito",18f)
+        text("Dans ces applications, Keyra n’apprend rien et ne montre aucun historique. La liste de départ (gestionnaires de mots de passe, messageries chiffrées, authentificateurs, banques) est vérifiée ; Keyra ne voit pas les applications installées.",14f)
+        IncognitoApps.active(this).forEach{pkg->button("✓ $pkg — retirer"){IncognitoApps.set(this,pkg,false);render()}}
+        IncognitoApps.suggestions(this).forEach{pkg->button("+ $pkg (champ mot de passe vu) — ajouter"){IncognitoApps.set(this,pkg,true);render()}}
+        text("Geste panique",18f)
+        text("Appui de 3 secondes sur la touche menu du clavier, puis glisser pour confirmer. Ou ce bouton :",14f)
+        button("Tout effacer maintenant"){
+            AlertDialog.Builder(this).setTitle("Tout effacer ?").setMessage("Mots appris, mots personnels, emoji, presse-papiers et choix incognito seront détruits définitivement. Les réglages d’apparence sont conservés.")
+                .setPositiveButton("Effacer"){_,_->Panic.wipe(this,killProcess=false);finishAffinity();Panic.wipe(this)}
+                .setNegativeButton("Annuler",null).show()
+        }
         text("Données libres et confidentialité",21f)
-        text("Lexique français FrequencyWords (50 000 entrées source, CC BY-SA 4.0). Recherche locale par distance Damerau-Levenshtein, complétion et fréquence d’usage. Catalogue Unicode Emoji 17.0 : 3 944 séquences complètes avec variantes. La traduction légère FR ↔ EN, les suggestions et les flous d’image s’exécutent localement. Les fréquences des emoji et les 20 dernières copies de texte sont conservées dans les données privées de l’application, sans sauvegarde Android. Le presse-papiers est observé pendant que le clavier est ouvert ; les champs privés et les copies marquées sensibles sont exclus. Aucun historique des frappes ni accès réseau.",14f)
+        text("Lexique français FrequencyWords (50 000 entrées source, CC BY-SA 4.0). Recherche locale par distance Damerau-Levenshtein, complétion et fréquence d’usage. Catalogue Unicode Emoji 17.0 : 3 944 séquences complètes avec variantes. La traduction légère FR ↔ EN, les suggestions et les flous d’image s’exécutent localement. Les données apprises sont chiffrées dans les données privées de l’application, sans sauvegarde Android ni transfert vers un autre appareil. Le presse-papiers est observé pendant que le clavier est ouvert ; les champs privés et les copies sensibles sont exclus. Aucun historique des frappes ni accès réseau.",14f)
         button("Effacer les copies enregistrées"){ClipboardHistory.clear(this);Toast.makeText(this,"Copies effacées",Toast.LENGTH_SHORT).show()}
         button("Effacer les emoji fréquents"){EmojiHistory.clear(this);Toast.makeText(this,"Historique des emoji effacé",Toast.LENGTH_SHORT).show()}
         button("Sources et licences"){

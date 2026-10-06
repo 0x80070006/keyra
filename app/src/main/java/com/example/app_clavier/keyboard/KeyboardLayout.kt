@@ -38,6 +38,8 @@ data class LayoutState(
     val accents:String?=null,
     /** Ordre des 10 chiffres du pavé PIN mélangé, ou null pour l'ordre habituel. */
     val pinDigits:List<String>?=null,
+    /** Navigation privée ou application incognito : un indicateur remplace l'icône des réglages. */
+    val incognito:Boolean=false,
 )
 
 object KeyboardLayouts {
@@ -67,7 +69,8 @@ object KeyboardLayouts {
             else -> {
                 key("clipboard","panel:clipboard",159,15,58,62,transparent=true,proximity=false)
                 key("accents","accents",310,15,58,62,small=true,transparent=true,proximity=false)
-                key("settings","settings",461,15,58,62,transparent=true,proximity=false)
+                if(s.incognito)keys+=KeyDef("settings","incognito",461,15,58,62,transparent=true,description="Navigation privée : rien n’est appris")
+                else key("settings","settings",461,15,58,62,transparent=true,proximity=false)
             }
         }
         key("next","menu",618,15,58,62,special=true,round=true,proximity=false)

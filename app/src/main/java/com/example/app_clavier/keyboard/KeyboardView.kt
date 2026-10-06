@@ -115,6 +115,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
                     if(key.popup.size>1)timers.postDelayed(t.longPress,settings.longPressMs)
                 }
                 key.code==" "->timers.postDelayed(t.longPress,settings.longPressMs)
+                key.code=="menu"->timers.postDelayed(t.longPress,PANIC_HOLD_MS) // 3 s sur la touche menu : geste panique
             }
         }
         invalidate()
@@ -373,6 +374,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         private const val REPEAT_START_MS=230L
         private const val REPEAT_MS=30L
         private const val FLASH_MS=85L
+        private const val PANIC_HOLD_MS=3_000L
         private const val BUTTON="android.widget.Button"
         /** Icônes vectorielles, construites une fois dans un repère de ±8 unités autour du centre. */
         private val ICONS:Map<String,Path> by lazy {
@@ -389,6 +391,8 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
                 "smile" to Path().apply{addCircle(0f,0f,6f,Path.Direction.CW);addCircle(-2f,-2f,0.3f,Path.Direction.CW);addCircle(2f,-2f,0.3f,Path.Direction.CW);addArc(-3f,-2f,3f,3f,15f,150f)},
                 "clipboard" to lines(-5f,-5f,5f,-5f,5f,7f,-5f,7f,-5f,-5f).with(lines(-3f,-7f,3f,-7f,3f,-3f,-3f,-3f,-3f,-7f)).with(lines(-2f,1f,2f,1f)).with(lines(-2f,4f,2f,4f)),
                 "accents" to Path(),
+                "incognito" to Path().apply{addCircle(-4f,2f,2.5f,Path.Direction.CW);addCircle(4f,2f,2.5f,Path.Direction.CW)}
+                    .with(lines(-1.5f,2f,1.5f,2f)).with(lines(-7f,-2f,7f,-2f)).with(lines(-4.5f,-2f,-3f,-6f,3f,-6f,4.5f,-2f)),
                 "settings" to Path().apply{
                     addCircle(0f,0f,5f,Path.Direction.CW);addCircle(0f,0f,1.5f,Path.Direction.CW)
                     for(i in 0..7){val a=Math.toRadians(i*45.0);val c=Math.cos(a).toFloat();val s=Math.sin(a).toFloat();moveTo(s*5f,-c*5f);lineTo(s*7f,-c*7f)}

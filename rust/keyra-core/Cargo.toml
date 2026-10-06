@@ -1,7 +1,7 @@
 [package]
 name = "keyra-core"
 version = "0.1.0"
-description = "Cœur de Keyra : fonctions pures, sans unsafe, sans entrée-sortie."
+description = "Cœur de Keyra : fonctions pures et chiffrement, sans unsafe, sans entrée-sortie."
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -11,6 +11,9 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+# AEAD XChaCha20-Poly1305 (RustCrypto). Sans getrandom : les nonces viennent de SecureRandom côté Kotlin. ADR-0024.
+chacha20poly1305 = { version = "0.11", default-features = false, features = ["alloc"] }
+zeroize = "1.9"
 
 [dev-dependencies]
 proptest = "1.11"

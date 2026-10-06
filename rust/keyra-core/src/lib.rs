@@ -4,3 +4,4 @@
 #![forbid(unsafe_code)]
 
 pub mod secret;
+pub mod vault;

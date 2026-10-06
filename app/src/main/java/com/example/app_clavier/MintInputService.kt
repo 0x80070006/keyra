@@ -9,8 +9,14 @@ import android.view.inputmethod.*
 import android.widget.Toast
 import java.util.Locale
 import java.util.concurrent.Executors
-import com.example.app_clavier.security.SecretDetector
+import com.example.app_clavier.core.KeyraCore
+import com.example.app_clavier.security.IncognitoApps
+import com.example.app_clavier.security.LearningGate
+import com.example.app_clavier.security.Panic
 import com.example.app_clavier.security.SecurityPolicy
+import com.example.app_clavier.storage.KeyManager
+import com.example.app_clavier.storage.Migration11to12
+import java.security.MessageDigest
 
 class MintInputService:InputMethodService(){
     private var keyboard:MintKeyboard?=null
@@ -22,7 +28,17 @@ class MintInputService:InputMethodService(){
     private val worker=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
     private val clipboard by lazy{getSystemService(CLIPBOARD_SERVICE) as ClipboardManager}
-    private val clipboardListener=ClipboardManager.OnPrimaryClipChangedListener{if(policy.allowClipboardHistory){ClipboardHistory.capture(this,clipboard);keyboard?.refreshClipboardPanel()}}
+    private val clipboardListener=ClipboardManager.OnPrimaryClipChangedListener{captureClip()}
+    /** Coffre : effacé de la mémoire quand l'écran s'éteint, rouvert quand l'appareil est déverrouillé (ADR-0006). */
+    private val vaultReceiver=object:BroadcastReceiver(){
+        override fun onReceive(context:Context,intent:Intent){
+            when(intent.action){
+                Intent.ACTION_SCREEN_OFF->KeyManager.executor.execute{KeyManager.lock()}
+                Intent.ACTION_USER_PRESENT->openVault()
+            }
+        }
+    }
+    private fun openVault(){KeyManager.unlockAsync(this){ok->if(ok)Migration11to12.run(this)}}
     private var clipboardListening=false
     private val suggestionRunnable=Runnable{calculateSuggestions()}
     @Volatile private var corrector:FrenchCorrector?=null
@@ -49,6 +65,9 @@ class MintInputService:InputMethodService(){
     }}
     override fun onCreate(){
         super.onCreate();prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        val filter=IntentFilter().apply{addAction(Intent.ACTION_SCREEN_OFF);addAction(Intent.ACTION_USER_PRESENT)}
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(vaultReceiver,filter,RECEIVER_NOT_EXPORTED) else registerReceiver(vaultReceiver,filter)
+        openVault()
         worker.execute{
             traced("Keyra.emojiLoad"){EmojiCatalog.all(this)}
             corrector=traced("Keyra.dictionaryLoad"){FrenchCorrector(assets.open("fr_frequency.txt").reader())}
@@ -56,12 +75,12 @@ class MintInputService:InputMethodService(){
             if(!destroyed)main.post{scheduleSuggestions()}
         }
     }
-    override fun onDestroy(){destroyed=true;if(clipboardListening)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(prefsListener);main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy()}
+    override fun onDestroy(){destroyed=true;runCatching{unregisterReceiver(vaultReceiver)};KeyManager.executor.execute{KeyManager.lock()};if(clipboardListening)clipboard.removePrimaryClipChangedListener(clipboardListener);prefs.unregisterOnSharedPreferenceChangeListener(prefsListener);main.removeCallbacksAndMessages(null);worker.shutdownNow();super.onDestroy()}
     override fun onCreateInputView():View=MintKeyboard(this,::handle).also{keyboard=it;configure(currentInputEditorInfo)}
     override fun onEvaluateFullscreenMode()=false
     override fun onStartInput(info:EditorInfo?,restarting:Boolean){super.onStartInput(info,restarting);session++;generation++;undo=null;queuedKeys.clear();suggestionWord="";suggestedCorrection=null;lastCompletedWord="";pendingTranslation=null;currentCursor=info?.initialSelEnd ?: -1;configure(info)}
-    override fun onStartInputView(info:EditorInfo?,restarting:Boolean)=traced("Keyra.startInputView"){super.onStartInputView(info,restarting);configure(info);flushQueuedKeys();applyPending()}
-    override fun onWindowShown()=traced("Keyra.windowShown"){super.onWindowShown();keyboard?.refreshTheme();if(!clipboardListening){clipboard.addPrimaryClipChangedListener(clipboardListener);clipboardListening=true};if(policy.allowClipboardHistory)ClipboardHistory.capture(this,clipboard);flushQueuedKeys();applyPending()}
+    override fun onStartInputView(info:EditorInfo?,restarting:Boolean)=traced("Keyra.startInputView"){super.onStartInputView(info,restarting);if(!KeyraCore.unlocked)openVault();configure(info);flushQueuedKeys();applyPending()}
+    override fun onWindowShown()=traced("Keyra.windowShown"){super.onWindowShown();keyboard?.refreshTheme();if(!clipboardListening){clipboard.addPrimaryClipChangedListener(clipboardListener);clipboardListening=true};captureClip();flushQueuedKeys();applyPending()}
     override fun onWindowHidden(){if(clipboardListening){clipboard.removePrimaryClipChangedListener(clipboardListener);clipboardListening=false};super.onWindowHidden()}
     override fun onFinishInput(){generation++;session++;undo=null;queuedKeys.clear();main.removeCallbacks(suggestionRunnable);super.onFinishInput()}
     override fun onUpdateSelection(oldSelStart:Int,oldSelEnd:Int,newSelStart:Int,newSelEnd:Int,candidatesStart:Int,candidatesEnd:Int){
@@ -72,12 +91,37 @@ class MintInputService:InputMethodService(){
     }
     private fun configure(info:EditorInfo?){
         val cls=(info?.inputType ?: 0) and InputType.TYPE_MASK_CLASS
-        policy=SecurityPolicy.of(info,keyguard?.isKeyguardLocked ?: true)
+        val pkg=info?.packageName
+        policy=SecurityPolicy.of(info,keyguard?.isKeyguardLocked ?: true,if(IncognitoApps.isIncognito(this,pkg))setOf(pkg!!) else emptySet())
+        val seen=policy
+        if(seen.isPassword)KeyManager.executor.execute{LearningGate.passwordField(this,seen,pkg)}
         keyboard?.setSearchAction((info?.imeOptions ?: 0) and EditorInfo.IME_MASK_ACTION==EditorInfo.IME_ACTION_SEARCH)
-        keyboard?.reset(cls==InputType.TYPE_CLASS_NUMBER || cls==InputType.TYPE_CLASS_PHONE || cls==InputType.TYPE_CLASS_DATETIME,policy.noHistory,policy.isPassword,policy.isPinPad)
+        keyboard?.reset(cls==InputType.TYPE_CLASS_NUMBER || cls==InputType.TYPE_CLASS_PHONE || cls==InputType.TYPE_CLASS_DATETIME,policy.noHistory,policy.isPassword,policy.isPinPad,
+            incognito=policy.incognitoApp || policy.noPersonalizedLearning)
     }
     private fun trailingWord(text:String):String=text.takeLastWhile{it.isLetter() || it=='\'' || it=='’' || it=='-'}
-    private fun personal(word:String)=prefs.getString("personal","")!!.lineSequence().any{it.trim().equals(word,true)}
+    private fun personal(word:String)=PersonalWords.contains(this,word)
+    /** Copie : filtrée par LearningGate sur le fil de stockage ; une copie sensible peut être effacée après 30 s. */
+    private fun captureClip(){
+        val current=policy
+        KeyManager.executor.execute{
+            val result=LearningGate.clip(this,current,clipboard)
+            main.post{
+                if(result==ClipboardHistory.Capture.STORED)keyboard?.refreshClipboardPanel()
+                if(result==ClipboardHistory.Capture.SENSITIVE)scheduleSensitiveClear()
+            }
+        }
+    }
+    private fun clipFingerprint():String? {
+        val text=runCatching{clipboard.primaryClip?.takeIf{it.itemCount>0}?.getItemAt(0)?.text?.toString()}.getOrNull() ?: return null
+        return MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString(""){"%02x".format(it)}
+    }
+    /** Option « effacer une copie sensible après 30 s » : seulement si elle est toujours la copie courante. */
+    private fun scheduleSensitiveClear(){
+        if(!prefs.getBoolean("clear_sensitive_clip",false))return
+        val fingerprint=clipFingerprint() ?: return
+        main.postDelayed({if(!destroyed && clipFingerprint()==fingerprint)runCatching{clipboard.clearPrimaryClip()}},30_000)
+    }
     private fun scheduleSuggestions(){
         if(destroyed)return
         generation++
@@ -125,21 +169,22 @@ class MintInputService:InputMethodService(){
         val eligible=canCorrect && !selected && engine!=null && prefs.getBoolean("correction",true) && !personal(word) && word.length>=3
         val cached=eligible && suggestionWord.equals(word,true)
         val ready=if(cached)suggestedCorrection else null
-        val shouldLearn=policy.canLearn && word.length>=2 && engine?.contains(word)!=true && SecretDetector.isLearnable(word)
+        val learnPolicy=policy
+        val shouldLearn=policy.canLearn && word.length>=2 && engine?.contains(word)!=true
         if(ready!=null && ready!=word && ic.getTextBeforeCursor(word.length,0)?.toString()?.equals(word,true)==true){
             ic.beginBatchEdit();ic.deleteSurroundingText(word.length,0);ic.commitText(ready+value,1);ic.endBatchEdit()
             undo=Undo(word+value,ready+value,session)
         }else ic.commitText(value,1) // The delimiter is always visible immediately.
         lastCompletedWord=(ready ?: word).lowercase(Locale.FRENCH)
         if(!eligible || cached){
-            if(shouldLearn && ready==null)worker.execute{UserLexicon.record(this,word)}
+            if(shouldLearn && ready==null)worker.execute{LearningGate.word(this,learnPolicy,word)}
             return
         }
         val correctionEngine=engine ?: return
         val inputSession=session;val expected=word+value;val tolerance=prefs.getInt("tolerance",55)
         worker.execute {
             val replacement=correctionEngine.correction(word,tolerance)
-            if(replacement==null){if(shouldLearn)UserLexicon.record(this,word);return@execute}
+            if(replacement==null){if(shouldLearn)LearningGate.word(this,learnPolicy,word);return@execute}
             main.post {
                 val connection=currentInputConnection
                 if(!destroyed && session==inputSession && connection!=null && connection.getSelectedText(0).isNullOrEmpty() && connection.getTextBeforeCursor(expected.length,0)?.toString()==expected){
@@ -205,13 +250,16 @@ class MintInputService:InputMethodService(){
             key=="paste" -> if(!secure){val clip=(getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).primaryClip;if(clip!=null && clip.itemCount>0)ic.commitText(clip.getItemAt(0).coerceToText(this),1)}
             key.startsWith("clip:") -> if(policy.allowClipboardHistory){val index=key.substringAfter(':').toIntOrNull() ?: -1;ClipboardHistory.items(this).getOrNull(index)?.let{ic.commitText(it,1)}}
             key=="clearclips" -> {ClipboardHistory.clear(this);Toast.makeText(this,"Historique effacé",Toast.LENGTH_SHORT).show()}
+            key.startsWith("clipPin:") -> ClipboardHistory.togglePin(this,key.substringAfter(':').toIntOrNull() ?: -1)
+            key.startsWith("clipDel:") -> ClipboardHistory.delete(this,key.substringAfter(':').toIntOrNull() ?: -1)
+            key=="panic" -> {requestHideSelf(0);Panic.wipe(this)}
             key=="selectAll" -> ic.performContextMenuAction(android.R.id.selectAll)
             key=="copy" -> if(policy.allowCopy)ic.performContextMenuAction(android.R.id.copy)
             key=="cut" -> if(policy.allowCopy)ic.performContextMenuAction(android.R.id.cut)
             key=="left" || key=="right" -> {undo=null;val code=if(key=="left")KeyEvent.KEYCODE_DPAD_LEFT else KeyEvent.KEYCODE_DPAD_RIGHT;ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN,code));ic.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP,code))}
             key.startsWith("suggest:") -> {
                 val word=trailingWord(ic.getTextBeforeCursor(80,0)?.toString() ?: "")
-                if(word.isNotEmpty() && word==suggestionWord && canCorrect){var new=key.substringAfter(':');if(word.first().isUpperCase())new=new.replaceFirstChar{it.uppercase()};ic.beginBatchEdit();ic.deleteSurroundingText(word.length,0);ic.commitText("$new ",1);ic.endBatchEdit();lastCompletedWord=new.lowercase(Locale.FRENCH);if(policy.canLearn)worker.execute{UserLexicon.record(this,new)}}
+                if(word.isNotEmpty() && word==suggestionWord && canCorrect){var new=key.substringAfter(':');if(word.first().isUpperCase())new=new.replaceFirstChar{it.uppercase()};ic.beginBatchEdit();ic.deleteSurroundingText(word.length,0);ic.commitText("$new ",1);ic.endBatchEdit();lastCompletedWord=new.lowercase(Locale.FRENCH);val learnPolicy=policy;worker.execute{LearningGate.word(this,learnPolicy,new)}}
             }
             key in listOf(" ",".",",","!","?",";",":") -> delimiter(key)
             else -> {undo=null;ic.commitText(key,1)}
