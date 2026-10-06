@@ -101,6 +101,6 @@ class PerformanceBaselineTest {
 
     private companion object {
         const val BASELINE_REBUILDS=4 // mesuré en phase 0 : 2 par appui sur Maj
-        const val BASELINE_DEAD_LETTERS=0.27 // mesuré en phase 0 : 26,7 %
+        const val BASELINE_DEAD_LETTERS=0.28 // phase 0 : 26,7 % (Pixel 9a), 27,2 % (Pixel 6, arrondis des positions) + marge
     }
 }
