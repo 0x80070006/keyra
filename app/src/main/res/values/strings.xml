@@ -7,5 +7,7 @@
     <string name="setting_gesture_down">Balayer vers le bas pour masquer le clavier</string>
     <string name="setting_gesture_up">Balayer vers le haut pour une majuscule</string>
     <string name="setting_gesture_left">Balayer vers la gauche pour effacer un mot</string>
+    <string name="setting_emoji_suggest">Proposer un emoji pour certains mots (« cœur », « merci »…)</string>
+    <string name="setting_dynamic_zones">Zones de toucher adaptatives</string>
 </resources>
 

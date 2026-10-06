@@ -28,3 +28,10 @@ path = "fuzz_targets/vault_journal.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "dictionary_load"
+path = "fuzz_targets/dictionary_load.rs"
+test = false
+doc = false
+bench = false

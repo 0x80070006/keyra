@@ -19,6 +19,8 @@ class KeyDef(
     val description:String=label,
     /** Choix de l'appui long : la touche elle-même d'abord, puis accents et chiffre. Vide : pas de choix. */
     val popup:List<String> = emptyList(),
+    /** Texte en gras (suggestion que l'espace appliquera). */
+    val bold:Boolean=false,
 ){
     val right get()=x+w
     val bottom get()=y+h
@@ -28,13 +30,25 @@ class KeyDef(
     override fun toString()="KeyDef($code)"
 }
 
+/** Une case du bandeau de suggestions. */
+data class StripItem(val label:String,val code:String,val bold:Boolean=false)
+
+/**
+ * Bandeau à la SwiftKey : au centre la meilleure proposition (en gras si l'espace l'appliquera),
+ * à gauche le mot tapé tel quel quand une correction est prévue, à droite la suivante (ou un emoji).
+ */
+data class Strip(val left:StripItem?=null,val center:StripItem?=null,val right:StripItem?=null){
+    val isEmpty get()=left==null && center==null && right==null
+    companion object { val EMPTY=Strip() }
+}
+
 /** Ce qui détermine les touches affichées en mode frappe (lettres, symboles, pavé numérique). */
 data class LayoutState(
     val mode:Int, // 0 lettres, 1 symboles, 2 autres symboles, 4 pavé numérique
     val shifted:Boolean=false,
     val locked:Boolean=false,
     val searchAction:Boolean=false,
-    val suggestions:List<String> = emptyList(),
+    val strip:Strip=Strip.EMPTY,
     val accents:String?=null,
     /** Ordre des 10 chiffres du pavé PIN mélangé, ou null pour l'ordre habituel. */
     val pinDigits:List<String>?=null,
@@ -65,7 +79,9 @@ object KeyboardLayouts {
         key("menu","menu",8,15,58,62,special=true,round=true,proximity=false)
         when {
             s.mode==0 && s.accents!=null -> s.accents.forEachIndexed{i,ch->key(ch.toString(),"char:$ch",80+i*72,15,64,62,proximity=false)}
-            s.mode==0 && s.suggestions.isNotEmpty() -> s.suggestions.take(3).forEachIndexed{i,w->key(w,"suggest:$w",80+i*176,15,166,62,small=true,proximity=false)}
+            s.mode==0 && !s.strip.isEmpty -> listOf(s.strip.left,s.strip.center,s.strip.right).forEachIndexed{i,item->
+                if(item!=null)keys+=KeyDef(item.code,item.label,80+i*176,15,166,62,small=true,description=item.label,bold=item.bold)
+            }
             else -> {
                 key("clipboard","panel:clipboard",159,15,58,62,transparent=true,proximity=false)
                 key("accents","accents",310,15,58,62,small=true,transparent=true,proximity=false)

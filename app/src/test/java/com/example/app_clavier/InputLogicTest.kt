@@ -37,6 +37,8 @@ class InputLogicTest {
         override fun isKnown(word:String)=word.lowercase() in setOf("bonjour","venir","salut","ça","va","je","vais")
         override fun isPersonal(word:String)=word.equals("keyra",true)
         override fun learn(word:String){learned+=word}
+        val pairs=ArrayList<Pair<String,String>>()
+        override fun learnPair(previous:String,word:String){pairs+=previous to word}
         override fun now()=time
     }
     private val target=FakeTarget();private val host=Host();private val logic=InputLogic(target,host)
@@ -97,6 +99,9 @@ class InputLogicTest {
         type("Bonjuor ");assertEquals("début de phrase : corrigé, majuscule gardée","Bonjour ",target.toString())
         type("Vnir ");assertEquals("milieu de phrase : nom propre probable, intact","Bonjour Vnir ",target.toString())
         type("ok. Vnir ");assertEquals("Bonjour Vnir ok. Venir ",target.toString())
+    }
+    @Test fun pairsAreLearnedWithinASentenceOnly(){
+        type("je vais bien. merci ");assertEquals(listOf("je" to "vais","vais" to "bien"),host.pairs)
     }
     @Test fun accentReplacementInComposition(){type("e");logic.replaceLast("e","é");assertEquals("é",target.toString())}
 }

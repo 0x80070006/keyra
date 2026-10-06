@@ -10,7 +10,7 @@ import java.nio.ByteOrder
  */
 internal object KeyraCore {
     const val ERROR=-1
-    private const val ABI_VERSION=2
+    private const val ABI_VERSION=3
     /** Faux si la bibliothèque native manque ou ne correspond pas à ce code Kotlin. */
     val available:Boolean by lazy {
         runCatching{System.loadLibrary("keyra_jni");abiVersion()==ABI_VERSION}.getOrDefault(false)
@@ -22,6 +22,23 @@ internal object KeyraCore {
     @JvmStatic private external fun vaultIsUnlocked():Boolean
     @JvmStatic private external fun vaultSealFrame(context:ByteArray,nonce:ByteArray,plaintext:ByteArray):ByteArray?
     @JvmStatic private external fun vaultReadJournal(context:ByteArray,data:ByteArray):ByteArray?
+    @JvmStatic private external fun engineLoad(dictionary:ByteArray):Int
+    @JvmStatic private external fun engineAnalyze(word:ByteArray,tolerance:Int,limit:Int):ByteArray?
+    @JvmStatic private external fun engineContains(word:ByteArray):Boolean
+    @JvmStatic private external fun engineNextLetters(prefix:ByteArray):ByteArray?
+
+    // ------------------------------------------------------------ moteur de prédiction (phase 5)
+    fun loadEngine(dictionary:ByteArray):Int = if(!available)ERROR else runCatching{engineLoad(dictionary)}.getOrDefault(ERROR)
+    private inline fun <T> withWord(word:String,block:(ByteArray)->T):T? {
+        if(!available)return null
+        val bytes=word.toByteArray(Charsets.UTF_8)
+        return try{block(bytes)}catch(_:Throwable){null}finally{bytes.fill(0)}
+    }
+    /** Correction (première ligne, vide si aucune) puis suggestions « mot<tab>complétion », ou null. */
+    fun analyzeWord(word:String,tolerance:Int,limit:Int):String? =
+        withWord(word){bytes->engineAnalyze(bytes,tolerance,limit)?.let{out->try{out.toString(Charsets.UTF_8)}finally{out.fill(0)}}}
+    fun knowsWord(word:String)=withWord(word){engineContains(it)} ?: false
+    fun nextLetters(prefix:String)=withWord(prefix){engineNextLetters(it)}
 
     /** Code de keyra_core::secret::Sensitivity, ou ERROR. */
     fun classify(text:CharSequence):Int {

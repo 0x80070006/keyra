@@ -101,6 +101,14 @@ class SettingsActivity:Activity(){
         text("Apprentissage local",18f)
         text("Les mots inconnus saisis puis validés au moins deux fois peuvent apparaître dans les suggestions. Ils restent dans les données privées de Keyra et ne sont jamais envoyés sur Internet.",14f)
         button("Effacer les mots appris"){UserLexicon.clear(this);Toast.makeText(this,"Mots appris effacés",Toast.LENGTH_SHORT).show()}
+        text("Après une espace, Keyra propose les mots que tu tapes souvent ensuite (paires de mots apprises, chiffrées). Rien n’est appris en navigation privée ni dans les champs sensibles.",14f)
+        button("Effacer les paires de mots apprises"){com.example.app_clavier.engine.NextWords.clear(this);Toast.makeText(this,"Paires de mots effacées",Toast.LENGTH_SHORT).show()}
+        toggle(R.string.setting_emoji_suggest,"emoji_suggest",true)
+        toggle(R.string.setting_dynamic_zones,"dynamic_zones",true)
+        text("Zones adaptatives : la lettre suivante la plus probable devient un peu plus facile à toucher (au plus un quart de touche), sans changer l’affichage. Coupé dans les champs sensibles.",14f)
+        val blocked=com.example.app_clavier.engine.BlockedWords.all(this)
+        if(blocked.isNotEmpty())text("Suggestions masquées (appui long sur une suggestion pour en masquer une) :",14f)
+        blocked.forEach{word->button("✕ $word — afficher à nouveau"){com.example.app_clavier.engine.BlockedWords.remove(this,word);render()}}
         text("Traduction hors ligne",21f)
         text("Le panneau Traduction travaille uniquement avec le lexique FR ↔ EN embarqué. Sélectionne un texte ou place le curseur après une phrase, ouvre le menu du clavier, puis touche Traduction hors ligne. Le bouton Remplacer substitue le texte traduit à la sélection ou à la phrase. Les mots inconnus restent inchangés et aucun texte n’est envoyé hors du téléphone.",14f)
         text("Thèmes",21f)

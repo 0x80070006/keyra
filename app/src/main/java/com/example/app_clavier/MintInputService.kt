@@ -10,7 +10,12 @@ import android.widget.Toast
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import com.example.app_clavier.core.KeyraCore
+import com.example.app_clavier.engine.BlockedWords
+import com.example.app_clavier.engine.NextWords
+import com.example.app_clavier.engine.Predictor
 import com.example.app_clavier.ime.ImeSettings
+import com.example.app_clavier.keyboard.Strip
+import com.example.app_clavier.keyboard.StripItem
 import com.example.app_clavier.ime.InputLogic
 import com.example.app_clavier.ime.RichInputConnection
 import com.example.app_clavier.security.IncognitoApps
@@ -49,7 +54,6 @@ class MintInputService:InputMethodService(){
     private fun openVault(){KeyManager.unlockAsync(this){ok->if(ok)Migration11to12.run(this)}}
     private var clipboardListening=false
     private val suggestionRunnable=Runnable{calculateSuggestions()}
-    @Volatile private var corrector:FrenchCorrector?=null
     @Volatile private var translator:OfflineTranslator?=null
     @Volatile private var generation=0
     private var session=0
@@ -70,13 +74,15 @@ class MintInputService:InputMethodService(){
         override val policy get()=this@MintInputService.policy
         override fun correctionFor(word:String):String? {
             if(corrections.containsKey(word))return corrections[word]
-            val engine=corrector ?: return null
+            if(!Predictor.ready)return null
             val tolerance=settings.tolerance
-            return runCatching{correctionWorker.submit<String?>{engine.correction(word,tolerance)}.get(CORRECTION_WAIT_MS,TimeUnit.MILLISECONDS)}.getOrNull()
+            return runCatching{correctionWorker.submit<String?>{Predictor.correction(word,tolerance)}.get(CORRECTION_WAIT_MS,TimeUnit.MILLISECONDS)}.getOrNull()
+                ?.takeIf{!BlockedWords.contains(this@MintInputService,it)}
         }
-        override fun isKnown(word:String)=corrector?.contains(word)==true
+        override fun isKnown(word:String)=Predictor.contains(word)
         override fun isPersonal(word:String)=PersonalWords.contains(this@MintInputService,word)
         override fun learn(word:String){val p=policy;worker.execute{LearningGate.word(this@MintInputService,p,word)}}
+        override fun learnPair(previous:String,word:String){val p=policy;worker.execute{LearningGate.pair(this@MintInputService,p,previous,word)}}
         override fun now()=SystemClock.uptimeMillis()
     })}
 
@@ -95,7 +101,7 @@ class MintInputService:InputMethodService(){
         openVault()
         worker.execute{
             traced("Keyra.emojiLoad"){EmojiCatalog.all(this)}
-            corrector=traced("Keyra.dictionaryLoad"){FrenchCorrector(assets.open("fr_frequency.txt").reader())}
+            traced("Keyra.dictionaryLoad"){Predictor.load(this)}
             translator=traced("Keyra.translatorLoad"){OfflineTranslator(assets.open("offline_translation_fr_en.tsv").reader())}
             if(!destroyed)main.post{scheduleSuggestions()}
         }
@@ -171,31 +177,63 @@ class MintInputService:InputMethodService(){
     private fun calculateSuggestions(){
         if(destroyed)return
         val id=generation
-        if(!policy.canSuggest){keyboard?.showSuggestions(emptyList());return}
+        updateLetterBias()
+        if(!policy.canSuggest){keyboard?.showSuggestions(Strip.EMPTY);return}
         val word=logic.currentWord() // cache local : aucune lecture IPC
+        val learnedAllowed=policy.canUseLearnedWords
         if(word.length<2){
             suggestionWord=""
             val previous=logic.lastCompletedWord
-            keyboard?.showSuggestions(if(word.isEmpty() && previous.isNotEmpty())corrector?.nextWords(previous).orEmpty() else emptyList())
+            if(word.isNotEmpty() || previous.isEmpty()){keyboard?.showSuggestions(Strip.EMPTY);return}
+            worker.execute{
+                if(id!=generation)return@execute
+                val next=NextWords.predict(this,previous,learnedAllowed).filter{!BlockedWords.contains(this,it)}
+                main.post{if(id==generation && !destroyed)keyboard?.showSuggestions(strip(next,null,null,null))}
+            }
             return
         }
-        val engine=corrector ?: return
+        if(!Predictor.ready)return
         val tolerance=settings.tolerance
-        val learnedAllowed=policy.canUseLearnedWords
+        val autocorrect=settings.autocorrect && tolerance>0
+        val emojiAllowed=prefs.getBoolean("emoji_suggest",true) && !policy.noHistory
         worker.execute {
             if(id!=generation)return@execute
             val lower=word.lowercase(java.util.Locale.FRENCH)
-            val (choices,computed)=traced("Keyra.suggest"){
+            var shown:Strip=Strip.EMPTY
+            val computed=HashMap<String,String?>(2)
+            traced("Keyra.suggest"){
                 val learned=(if(learnedAllowed)UserLexicon.suggestions(this,word) else emptyList()).map{if(word.contains('’'))it.replace('\'','’') else it}
-                val candidates=engine.candidates(word,tolerance)
+                val analysis=Predictor.analyze(word,tolerance,4)
                 // Début de phrase : InputLogic demandera la correction de la forme en minuscules ; on la prépare aussi.
-                val forms=HashMap<String,String?>(2)
-                forms[word]=engine.correction(word,tolerance)
-                if(lower!=word)forms[lower]=engine.correction(lower,tolerance)
-                (learned+candidates.map{it.word}).distinct().take(3) to forms
+                computed[word]=analysis?.correction
+                if(lower!=word)computed[lower]=Predictor.correction(lower,tolerance)
+                val correction=(computed[word] ?: computed[lower]?.replaceFirstChar{it.titlecase(java.util.Locale.FRENCH)})
+                    ?.takeIf{autocorrect && !BlockedWords.contains(this,it)}
+                val choices=(learned+analysis?.suggestions.orEmpty()).distinct().filter{!it.equals(word,true) && !BlockedWords.contains(this,it)}
+                shown=strip(choices,word,correction,if(emojiAllowed)EmojiCatalog.forWord(this,word) else null)
             }
-            main.post{if(id==generation && !destroyed){corrections.putAll(computed);if(keyboard?.showSuggestions(choices)==true)suggestionWord=word}}
+            main.post{if(id==generation && !destroyed){corrections.putAll(computed);if(keyboard?.showSuggestions(shown)==true)suggestionWord=word}}
         }
+    }
+
+    /**
+     * Bandeau à la SwiftKey. Avec une correction prévue : « mot tapé » à gauche, correction en gras au centre,
+     * proposition suivante à droite. Sinon : meilleure proposition au centre, puis gauche, puis droite.
+     * Un emoji correspondant au mot prend la case de droite.
+     */
+    private fun strip(choices:List<String>,typed:String?,correction:String?,emoji:String?):Strip {
+        fun item(word:String)=StripItem(capitalizeLike(word,typed),"suggest:$word")
+        val base=if(correction!=null && typed!=null)
+            Strip(StripItem("« $typed »","suggestTyped:$typed"),StripItem(correction,"suggest:$correction",bold=true),choices.firstOrNull{!it.equals(correction,true)}?.let(::item))
+        else Strip(choices.getOrNull(1)?.let(::item),choices.getOrNull(0)?.let(::item),choices.getOrNull(2)?.let(::item))
+        return if(emoji!=null)base.copy(right=StripItem(emoji,"emojiSuggest:$emoji")) else base
+    }
+    private fun capitalizeLike(word:String,typed:String?)=if(typed?.firstOrNull()?.isUpperCase()==true)word.replaceFirstChar{it.titlecase(java.util.Locale.FRENCH)} else word
+
+    /** Zones de toucher dynamiques : la lettre suivante la plus probable s'agrandit un peu (jamais en champ sensible). */
+    private fun updateLetterBias(){
+        val on=prefs.getBoolean("dynamic_zones",true) && policy.canSuggest && Predictor.ready
+        keyboard?.setLetterBias(if(on)Predictor.nextLetters(logic.currentWord()) else null)
     }
 
     private fun flushQueuedKeys(){
@@ -272,6 +310,17 @@ class MintInputService:InputMethodService(){
             key.startsWith("suggest:") -> {
                 val word=logic.currentWord()
                 if(policy.canSuggest && (word.isEmpty() || word.equals(suggestionWord,true)))logic.onSuggestion(key.substringAfter(':'))
+            }
+            key.startsWith("suggestTyped:") -> logic.onSuggestion(key.substringAfter(':'))
+            key.startsWith("emojiSuggest:") -> {
+                val emoji=key.substringAfter(':')
+                logic.onDelimiter(" ");logic.onText(emoji)
+                val allowed=!policy.noHistory;KeyManager.executor.execute{LearningGate.emoji(this,allowed,emoji)}
+            }
+            key.startsWith("block:") -> {
+                val word=key.substringAfter(':')
+                KeyManager.executor.execute{BlockedWords.add(this,word)}
+                Toast.makeText(this,"Suggestion masquée",Toast.LENGTH_SHORT).show()
             }
             key in DELIMITERS -> logic.onDelimiter(key)
             else -> logic.onText(key)
