@@ -3,7 +3,6 @@ import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -15,18 +14,27 @@ android {
 
     defaultConfig {
         applicationId = "com.example.app_clavier"
-        minSdk = 24
+        minSdk = 29
         targetSdk = 37
         versionCode = 11
         versionName = "11.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Seules ABI livrées : arm64 (téléphones) et x86_64 (émulateur). Voir ADR-0021.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+    }
+
+    // F-Droid : pas de bloc de dépendances chiffré par Google dans l'APK ni l'AAB.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     buildTypes {
         release {
+            // R8 : réduction du code, et suppression des appels à android.util.Log (src/main/keepRules).
             optimization {
-                enable = false
+                enable = true
             }
         }
         // Copie de release, signée en debug et « profileable » : uniquement pour le module :benchmark.
@@ -40,27 +48,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    buildFeatures {
-        compose = true
-    }
 }
 
+// Aucune dépendance d'exécution hors de la bibliothèque standard Kotlin (ADR-0013 à 0016).
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-    debugImplementation(libs.androidx.compose.ui.tooling)
+    androidTestImplementation(libs.androidx.test.runner)
 }
 
 // ---------------------------------------------------------------------------
