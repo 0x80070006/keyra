@@ -19,3 +19,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Épinglée exprès à 0.3.0 : la 0.4 ajoute des macros procédurales (syn, quote) au build. Voir ADR-0022.
+      - dependency-name: jni-sys

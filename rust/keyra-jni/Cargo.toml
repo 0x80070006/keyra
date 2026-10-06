@@ -15,6 +15,6 @@ crate-type = ["cdylib"]
 workspace = true
 
 [dependencies]
-keyra-core = { path = "../keyra-core" }
+keyra-core = { path = "../keyra-core", version = "0.1.0" }
 jni-sys = "=0.3.0"
 zeroize = "1.9"
