@@ -24,6 +24,17 @@ android {
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
+    // Lint strict : tout nouvel avertissement fait échouer le build. Les avertissements de la 11.0 sont
+    // listés dans lint-baseline.xml et seront traités au fil des phases. Les vérifications qui dépendent de
+    // la date (nouvelles versions disponibles) sont coupées : elles casseraient la CI sans changement de code.
+    lint {
+        warningsAsErrors = true
+        abortOnError = true
+        checkReleaseBuilds = true
+        baseline = file("lint-baseline.xml")
+        disable += listOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "OldTargetApi")
+    }
+
     // F-Droid : pas de bloc de dépendances chiffré par Google dans l'APK ni l'AAB.
     dependenciesInfo {
         includeInApk = false
@@ -117,3 +128,47 @@ val cargoBuild = tasks.register<CargoBuildTask>("cargoBuild") {
 androidComponents.onVariants { variant ->
     variant.sources.jniLibs?.addGeneratedSourceDirectory(cargoBuild, CargoBuildTask::outputDir)
 }
+
+// ---------------------------------------------------------------------------
+// Garde-fou « aucun texte tapé dans les journaux » (menace I-8). Échoue le build si un
+// appel de journalisation, de trace, de Toast ou d'exception reçoit autre chose qu'un
+// littéral constant. Exception explicite : commentaire « journal-ok: raison » sur la ligne.
+// ---------------------------------------------------------------------------
+abstract class LogGuardTask : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val sources: ConfigurableFileCollection
+    @get:OutputFile abstract val report: RegularFileProperty
+
+    @TaskAction fun check() {
+        val forbidden = listOf(
+            Regex("""\bimport\s+android\.util\.Log\b""") to "android.util.Log est interdit dans le code de l'application",
+            Regex("""(?<![\w.])Log\.(v|d|i|w|e|wtf)\(""") to "journalisation interdite",
+            Regex("""\b(println|print)\(""") to "println interdit",
+            Regex("""\.printStackTrace\(""") to "printStackTrace interdit",
+            Regex("""System\.(out|err)""") to "System.out/err interdit",
+        )
+        val literalOnly = listOf(
+            Regex("""(?<!fun\s)(?<!fun <T> )\btraced\((?!\s*"[^"$]*"\s*\))""") to "traced() exige un nom littéral constant",
+            Regex("""Trace\.beginSection\((?!\s*"[^"$]*"\s*\))""") to "Trace.beginSection() exige un nom littéral constant",
+            Regex("""Toast\.makeText\([^,]+,\s*(?!"[^"$]*"\s*,)""") to "le message d'un Toast doit être un littéral constant",
+            Regex("""\b(error|IllegalStateException|IllegalArgumentException)\(\s*"[^"]*\$""") to "message d'exception construit à partir d'une variable",
+        )
+        val problems = ArrayList<String>()
+        sources.files.sortedBy { it.path }.forEach { file ->
+            file.readLines().forEachIndexed { index, line ->
+                if (line.contains("journal-ok:")) return@forEachIndexed
+                val code = line.substringBefore("//")
+                (forbidden + literalOnly).forEach { (regex, message) ->
+                    if (regex.containsMatchIn(code)) problems.add("${file.name}:${index + 1}: $message\n    ${line.trim()}")
+                }
+            }
+        }
+        report.get().asFile.writeText(problems.joinToString("\n").ifEmpty { "OK" })
+        if (problems.isNotEmpty()) throw GradleException("Garde-fou des journaux :\n" + problems.joinToString("\n"))
+    }
+}
+val logGuard = tasks.register<LogGuardTask>("logGuard") {
+    sources.from(fileTree("src/main/java") { include("**/*.kt", "**/*.java") })
+    report.set(layout.buildDirectory.file("reports/keyra/log-guard.txt"))
+}
+tasks.named("check") { dependsOn(logGuard) }
+tasks.named("preBuild") { dependsOn(logGuard) }
