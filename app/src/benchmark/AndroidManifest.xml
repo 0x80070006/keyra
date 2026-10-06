@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Variante benchmark seulement : permet à Macrobenchmark de profiler l'application sans la rendre débogable.
+     Ce fichier n'entre jamais dans l'APK de release. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <profileable android:shell="true" />
+    </application>
+</manifest>

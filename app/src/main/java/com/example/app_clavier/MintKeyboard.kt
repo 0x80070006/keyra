@@ -57,6 +57,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private var artwork:ThemeBackground.Artwork?=null
     private val touchHandler=Handler(Looper.getMainLooper())
     private var stableRebuildPending=false
+    /** Full view rebuilds since creation (performance diagnostic and tests). */
+    var rebuildCount=0;private set
     private val accentMap=mapOf("a" to "àâäæ","e" to "éèêë","i" to "îï","o" to "ôöœ","u" to "ùûü","c" to "ç","n" to "ñ","y" to "ÿ")
     init {isMotionEventSplittingEnabled=true;rebuild()}
     override fun shouldDelayChildPressedState()=false
@@ -85,7 +87,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         queuedSuggestions=null
         return applySuggestions(values)
     }
-    private fun applySuggestions(values:List<String>):Boolean{
+    private fun applySuggestions(values:List<String>)=traced("Keyra.suggestionStrip"){replaceSuggestions(values)}
+    private fun replaceSuggestions(values:List<String>):Boolean{
         if(values==suggestions)return true
         suggestions=values
         if(panel.isEmpty() && mode==0 && accents==null){
@@ -97,7 +100,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private fun releasePressed(cancel:Boolean){
         for(i in 0 until childCount)(getChildAt(i) as? Key)?.releaseTouch(cancel)
     }
-    override fun dispatchTouchEvent(event:MotionEvent):Boolean {
+    override fun dispatchTouchEvent(event:MotionEvent)=traced("Keyra.touch"){routeTouch(event)}
+    private fun routeTouch(event:MotionEvent):Boolean {
         if(event.actionMasked==MotionEvent.ACTION_DOWN)touching=true
         if(panel.isEmpty() && mode!=3 && event.actionMasked==MotionEvent.ACTION_POINTER_DOWN){
             val index=event.actionIndex
@@ -109,7 +113,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             // cannot be swallowed while another finger is still down.
             if(target!=null && code!=null && (code.length==1 || code=="delete" || code=="enter")){
                 extraPointers[event.getPointerId(index)]=target
-                InputLatency.down();lastInputDown=android.os.SystemClock.uptimeMillis()
+                InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis()
                 target.isPressed=true
                 press(code)
                 if(prefs.getBoolean("haptic",true))target.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -191,7 +195,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             val popup=Runnable{if(held && view.isAttachedToWindow && mode==0){showAccentPopup(code,hint,view)}}
             view.setOnTouchListener{v,event->
                 when(event.actionMasked){
-                    MotionEvent.ACTION_DOWN->{held=true;InputLatency.down();lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);if(mode==0 && (hint!=null || accentMap.containsKey(code)))touchHandler.postDelayed(popup,350)}
+                    MotionEvent.ACTION_DOWN->{held=true;InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);if(mode==0 && (hint!=null || accentMap.containsKey(code)))touchHandler.postDelayed(popup,350)}
                     MotionEvent.ACTION_MOVE->{if(popupOwner==v)popupChoices.keys.forEach{it.isPressed=event.x+v.left>=it.left && event.x+v.left<it.right && event.y+v.top>=it.top && event.y+v.top<it.bottom}}
                     MotionEvent.ACTION_UP->{held=false;touchHandler.removeCallbacks(popup);if(popupOwner==v)selectPopupAt(event.x+v.left,event.y+v.top);(v as Key).flash();v.isPressed=false}
                     MotionEvent.ACTION_CANCEL->{held=false;touchHandler.removeCallbacks(popup);v.isPressed=false}
@@ -208,7 +212,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             })
             view.setOnTouchListener{v,event->
                 when(event.actionMasked){
-                    MotionEvent.ACTION_DOWN->{InputLatency.down();lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;erase();if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);v.postDelayed(repeat,230)}
+                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;erase();if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);v.postDelayed(repeat,230)}
                     MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{v.removeCallbacks(repeat);v.isPressed=false}
                     MotionEvent.ACTION_MOVE->{if(event.x<0 || event.y<0 || event.x>v.width || event.y>v.height){v.removeCallbacks(repeat);v.isPressed=false}}
                 }
@@ -282,7 +286,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         button(if(panel.isEmpty())"next" else "close","menu",618,15,58,62,true,true)
         buildingToolbar=false
     }
-    private fun rebuild() {
+    private fun rebuild(){rebuildCount++;traced("Keyra.rebuild"){rebuildViews()}}
+    private fun rebuildViews() {
         stableRebuildPending=false
         popupParts.clear();popupChoices.clear();popupOwner=null;popupBase="";keyCodes.clear();extraPointers.clear()
         emojiSearchBar=null;emojiSearchCount=null;emojiSearchGrid=null;emojiSearchAdapter=null
@@ -635,7 +640,7 @@ Keyra 9.0
         init{isClickable=true;isFocusable=true}
         override fun performClick():Boolean=super.performClick()
         override fun onTouchEvent(event:MotionEvent):Boolean {
-            if(event.actionMasked==MotionEvent.ACTION_DOWN){InputLatency.down();if(haptic)performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);isPressed=true;invalidate()}
+            if(event.actionMasked==MotionEvent.ACTION_DOWN){InputLatency.down(event);if(haptic)performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);isPressed=true;invalidate()}
             if(event.actionMasked==MotionEvent.ACTION_UP)flash()
             if(event.actionMasked==MotionEvent.ACTION_CANCEL)releaseHighlightUntil=0
             return super.onTouchEvent(event)
@@ -646,6 +651,7 @@ Keyra 9.0
             val u=height/85f
             p.style=Paint.Style.FILL;p.color=if(coral)Color.rgb(255,158,153) else if(red)Color.rgb(218,58,58) else if(active)colors.specialText else if(special)colors.special else colors.key
             val highlighted=isPressed || android.os.SystemClock.uptimeMillis()<releaseHighlightUntil
+            if(isPressed)InputLatency.pressedDrawn()
             if(highlighted)p.color=colors.specialText
             val radius=if(round)height/2f else 12*u
             if(!transparent || highlighted){

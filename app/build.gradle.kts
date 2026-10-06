@@ -25,6 +25,12 @@ android {
                 enable = false
             }
         }
+        // Copie de release, signée en debug et « profileable » : uniquement pour le module :benchmark.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
