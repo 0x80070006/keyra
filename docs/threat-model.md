@@ -135,3 +135,11 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 | T-4 Mise à jour malveillante | en cours : build reproductible vérifié en CI ; signature en phase 7 | `ci.yml` |
 | E-1 et E-3 Composants tiers exportés | **corrigées** : plus aucun composant tiers dans le manifeste | `allowed-components.txt` |
 | E-2 Exécution de code via données | **nouvelle surface** : pont JNI (3 blocs `unsafe` audités, tests instrumentés, fuzzing du cœur) | ADR-0021 |
+
+## 7. Avancement (fin de phase 2)
+
+| Menace | État |
+|--------|------|
+| I-10 Regard par-dessus l'épaule | **atténuée** : pas de surbrillance en champ sensible ni sur le pavé PIN ; pavé PIN mélangé (option) ; zones dynamiques coupées en champ sensible |
+| I-13 Service d'accessibilité | inchangée (inhérente) ; caractères annoncés « Point » en champ mot de passe |
+| D-1 Application cible lente | inchangée (phase 4, `RichInputConnection`) |

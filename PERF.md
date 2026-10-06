@@ -80,3 +80,15 @@ Ces lignes du tableau ne peuvent pas être prises sur l'émulateur :
 - [ ] Macrobenchmark de frappe.
 - [ ] Chargement du dictionnaire et coût par frappe, en release.
 - [ ] PSS, clavier ouvert.
+
+### Phase 2 (2026-10-06, émulateur Pixel 9a)
+
+| Mesure | Phase 0 | Phase 2 |
+|--------|---------|---------|
+| Zones mortes, quatre rangées | 27,2 % | **0,0 %** |
+| Appuis dans les écarts qui tapent | 0 / 9 | **9 / 9** |
+| Reconstructions de vues pour « Bonjour Maman » | 4 | **0** |
+| Vues dans le clavier en mode frappe | une par touche (environ 45) | **1** |
+| Correcteur (inchangé, phase 5) | p95 33 ms, chargement environ 10 s (debug, émulateur) | identique |
+
+Détails : `docs/phase-2-rapport.md`.
