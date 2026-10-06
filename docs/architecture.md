@@ -118,3 +118,18 @@ flowchart LR
 | Coordonnées de toucher du mot en cours | n'existent pas | mémoire seulement, effacées à la fin du mot |
 | Mesures de latence (`InputLatency`) | durées seulement | idem |
 | Traces Perfetto | noms constants (depuis la phase 0) | idem, vérifié par lint |
+
+## 4. Révision de la phase 1 : Kotlin et Rust
+
+Le cœur pur passe en Rust (ADR-0021). Frontière ajoutée :
+
+| # | Frontière | Ce qui la traverse | Règle |
+|---|-----------|--------------------|-------|
+| B8 | Kotlin ↔ Rust (`KeyraCore`, JNI) | texte en `byte[]` UTF-8 (16 Kio maximum), entier en retour | `keyra-jni` est le seul code `unsafe` ; tampon effacé des deux côtés ; erreur ⇒ `-1` ⇒ échec fermé côté Kotlin ; `abiVersion` vérifiée au chargement |
+
+```mermaid
+flowchart LR
+    K["Kotlin<br/>SecretDetector / KeyraCore"] -- "byte[] UTF-8" --> J["keyra-jni<br/>(unsafe audité)"]
+    J -- "&str" --> C["keyra-core<br/>forbid(unsafe_code)"]
+    C -- "Sensitivity" --> J -- "jint (≥0 ou -1)" --> K
+```

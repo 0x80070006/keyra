@@ -26,6 +26,17 @@
 | Durée CPU des images pendant la frappe, p50 / p95 (Macrobenchmark) | p95 ≤ 8,3 ms | 29 / 91 ms (sans compilation) ; 41 / 96 ms (compilation complète) | émulateur, SwiftShader | **non représentative** |
 | APK release non signé (sans R8) | — | 8,6 Mo, dont 21,8 Mo de dex non compressé | build | exacte |
 
+### Phase 1 (2026-10-06)
+
+| Mesure | Phase 0 | Phase 1 |
+|--------|---------|---------|
+| APK release non signé | 8,6 Mo | **1,17 Mo** (R8 activé, Compose retiré, 2 × `libkeyra_jni.so` d'environ 290 Ko) |
+| dex | 21,8 Mo | **162 Ko** |
+| Dépendances d'exécution | Compose, AndroidX (dizaines de bibliothèques) | **kotlin-stdlib** (JVM) ; **jni-sys, zeroize** (Rust) |
+| Composants tiers dans le manifeste | 2 (dont 1 exporté) | **0** |
+| Zones mortes, reconstructions, correcteur | 26,7 % / 4 / 79,5 % | inchangés (la phase 1 ne touche pas à la saisie) |
+| Chargement du dictionnaire (émulateur, debug) | 9 958 ms | 11 299 ms (bruit de l'émulateur ; le correcteur n'a pas changé) |
+
 ## 2. Ce que disent ces chiffres
 
 1. **Les zones mortes sont réelles et mesurables** : un peu plus d'un quart de la surface ne tape rien. C'est le gain le plus simple et le plus visible de la phase 2. Le `KeyDetector` peut être branché derrière les vues actuelles avant même le nouveau rendu.
