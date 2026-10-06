@@ -115,3 +115,23 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 3. Contenu de `dumpsys input_method` pendant une saisie (I-8).
 4. Affichage de Keyra sur l'écran de verrouillage de GrapheneOS, et dans quels cas (I-12).
 5. Disponibilité de StrongBox pour AES-256-GCM sur le Pixel 9a (ADR-0006). Prévoir le repli sur le TEE.
+
+## 6. Avancement (fin de phase 1)
+
+| Menace | État | Où |
+|--------|------|----|
+| I-2 Navigation privée apprise (S1) | **corrigée** | `SecurityPolicy`, `SecurityPolicyTest` |
+| I-3 Secrets appris (S2) | **atténuée** : `SecretDetector` (Rust) avant tout apprentissage ; tableau de transparence en phase 6 | `MintInputService`, `keyra-core::secret` |
+| I-4 Presse-papiers (S3) | **atténuée** : aucune copie secrète conservée ; chiffrement et expiration en phase 3 | `ClipboardHistory` |
+| I-5 Données au repos en clair (S4) | ouverte (phase 3) | — |
+| I-6 Transfert d'appareil (S5) | **corrigée** | `data_extraction_rules.xml` |
+| I-7 Captures des réglages (S6) | **corrigée** pour les réglages ; fenêtre de l'IME à étudier en phase 6 | `SettingsActivity` |
+| I-8 Journaux | **corrigée** : `logGuard`, clippy, R8 | `app/build.gradle.kts`, `rules.keep` |
+| I-9 Dictée (S7) | **atténuée** : avertissement nommant le service | `MediaInputActivity` |
+| I-12 Écran de verrouillage (S10) | **corrigée** pour l'apprentissage et l'historique | `SecurityPolicy.isLocked` |
+| S-4 `PendingInput` (S9) | **corrigée** | `PendingInput`, `applyPending` |
+| T-1 Dépendance compromise | **atténuée** : zéro dépendance JVM d'exécution, `verification-metadata.xml`, `cargo-deny`, `--locked`, manifeste contrôlé en CI | CI |
+| T-2 JDK téléchargé | **corrigée** | ADR-0019 |
+| T-4 Mise à jour malveillante | en cours : build reproductible vérifié en CI ; signature en phase 7 | `ci.yml` |
+| E-1 et E-3 Composants tiers exportés | **corrigées** : plus aucun composant tiers dans le manifeste | `allowed-components.txt` |
+| E-2 Exécution de code via données | **nouvelle surface** : pont JNI (3 blocs `unsafe` audités, tests instrumentés, fuzzing du cœur) | ADR-0021 |

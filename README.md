@@ -32,10 +32,34 @@ Le dictionnaire français vient de [FrequencyWords](https://github.com/hermitdav
 
 ## Compiler et vérifier
 
-Ouvre le dossier `D:\Projet CLavier` dans Android Studio. Avec le SDK Android installé :
+[![CI](https://github.com/0x80070006/keyra/actions/workflows/ci.yml/badge.svg)](https://github.com/0x80070006/keyra/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/0x80070006/keyra/badge)](https://securityscorecards.dev/viewer/?uri=github.com/0x80070006/keyra)
+
+Keyra est écrit en **Kotlin** (service de saisie, interface) et en **Rust** (cœur pur dans `rust/`, relié par un pont JNI minimal : voir `docs/adr/0021`). Outils attendus, tous épinglés :
+
+| Outil | Version | Où elle est fixée |
+|-------|---------|-------------------|
+| JDK | 25 (JetBrains Runtime d’Android Studio ou Temurin) | `gradle/gradle-daemon-jvm.properties` ; aucun téléchargement automatique |
+| SDK Android | compileSdk 37, minSdk 29 | `app/build.gradle.kts` |
+| NDK | 30.0.16248370 | `ndkVersion` ; installer avec `sdkmanager "ndk;30.0.16248370"` |
+| Rust | 1.99.0 et cibles `aarch64-linux-android`, `x86_64-linux-android` | `rust/rust-toolchain.toml` ; installé par `rustup` |
+| Windows seulement | Visual Studio Build Tools, charge de travail C++ | pour `cargo test` sur le poste |
 
 ```powershell
-.\gradlew.bat :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+.\gradlew.bat :app:logGuard :app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:sbom
+cd rust; cargo fmt --all --check; cargo clippy --workspace --all-targets -- -D warnings; cargo test --workspace
 ```
 
-L’APK est généré dans `app/build/outputs/apk/debug/app-debug.apk`. Sur un émulateur Pixel 9a démarré, les tests Android sont exécutables avec `:app:connectedDebugAndroidTest` ou en installant l’APK de test et en lançant `androidx.test.runner.AndroidJUnitRunner`. La dernière vérification directe dans l’AVD a passé 11 tests ; `vnir ` a été remplacé par `venir ` et `bonjour` par `hello` dans le panneau de traduction.
+- APK : `app/build/outputs/apk/`.
+- Tests sur émulateur ou téléphone : `:app:connectedDebugAndroidTest`.
+- Mesures de performance : `PERF.md`.
+- Sécurité : `docs/threat-model.md`, `docs/adr/` et les rapports de phase dans `docs/`.
+
+La CI GitHub Actions vérifie à chaque envoi :
+- le formatage, clippy en mode strict, les tests et `cargo-deny` ;
+- les tests JVM et instrumentés, et Lint strict ;
+- l’absence de texte tapé dans les journaux (`logGuard`) ;
+- le manifeste : aucune permission, et des composants en liste blanche ;
+- un build release reproductible (deux builds comparés octet par octet) ;
+- CodeQL et Semgrep, plus un fuzzing nocturne et OpenSSF Scorecard.
