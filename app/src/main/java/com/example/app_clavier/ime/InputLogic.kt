@@ -178,6 +178,18 @@ class InputLogic(private val target:TextTarget,private val host:Host){
         host.learn(value)
     }
 
+    /** Extrait de texte : remplace le mot en cours (le raccourci) par `text`, sans rien apprendre. Null : efface seulement. */
+    fun expandSnippet(text:String?){
+        undo=null
+        val word=currentWord()
+        target.batch{
+            if(composing.isNotEmpty()){target.setComposing("");finishComposing()}
+            else if(word.isNotEmpty())target.deleteBefore(word.codePointCount(0,word.length))
+            if(text!=null)target.commit(text)
+        }
+        lastCompletedWord=""
+    }
+
     /** Remplace le dernier caractère tapé (mode « valider à l'appui » : choix d'un accent après coup). */
     fun replaceLast(base:String,choice:String){
         if(composing.endsWith(base)){composing.setLength(composing.length-base.length);composing.append(choice);target.setComposing(composing);return}

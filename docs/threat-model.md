@@ -162,3 +162,15 @@ Colonnes : menace, contre-mesure prévue, phase, risque résiduel.
 |--------|------|
 | D-1 Application cible lente ou hostile (`getTextBeforeCursor`) | **corrigée** : cache local, relecture seulement au début du champ ou après un déplacement extérieur, réponses bornées à 1 000 caractères |
 | I-14 Copies résiduelles du texte | inchangée : cache de 1 000 caractères en mémoire, vidé à chaque champ (ADR-0011) |
+
+## 10. Avancement (fin de phases 5 et 6)
+
+| Menace ou surface | État |
+|-------------------|------|
+| Fuite par le son ou la bulle d'aperçu | **corrigée** : coupés en champ sensible ; pas de son en silencieux (ADR-0026) |
+| Nouvelles permissions | `VIBRATE` et `USE_BIOMETRIC`, *normales*, sans réseau ni données. Liste blanche contrôlée en CI (ADR-0026, ADR-0029) |
+| Fichier de disposition piégé | **corrigée** : seuls les fichiers livrés sont lus ; parseur strict, borné et fuzzé (ADR-0027) |
+| Export volé | Argon2id (64 Mio, 3 itérations) et XChaCha20-Poly1305. La phrase de passe fait au moins 10 caractères. Le presse-papiers et les extraits protégés ne sont jamais exportés (ADR-0028) |
+| Fichier d'import piégé (déni de service, paramètres affaiblis) | **corrigée** : bornes vérifiées avant calcul, en-tête authentifié, décodage borné ; `LearningGate.restore` réapplique `SecretDetector` |
+| Extrait sensible lu sur un téléphone déverrouillé | Extraits protégés : clé Keystore liée à une authentification forte de moins de 30 s, détruite par le geste panique. Comportement sur GrapheneOS **non vérifié** (ADR-0029) |
+| Transparence (D9) | Le tableau affiche l'absence de `INTERNET` lue dans `PackageManager` et `TrafficStats.getUidTxBytes`, plus tous les magasins, à lister, rechercher et supprimer (en `FLAG_SECURE`) |

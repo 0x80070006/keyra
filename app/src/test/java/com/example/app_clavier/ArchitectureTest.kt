@@ -13,14 +13,14 @@ class ArchitectureTest {
     private fun callers(call:Regex)=sources.filter{f->f.readLines().any{line->call.containsMatchIn(line.substringBefore("//")) && !line.contains("fun ")}}.map{it.name}.toSet()
 
     @Test fun onlyLearningGateWritesWhatKeyraKeeps(){
-        for(call in listOf("UserLexicon\\.record\\(","NextWords\\.record\\(","EmojiHistory\\.record\\(","ClipboardHistory\\.capture\\(","IncognitoApps\\.recordPasswordField\\(")){
+        for(call in listOf("UserLexicon\\.record\\(","NextWords\\.record\\(","EmojiHistory\\.record\\(","ClipboardHistory\\.capture\\(","IncognitoApps\\.recordPasswordField\\(","Backup\\.write\\(")){
             val found=callers(Regex(call))
             assertTrue("$call appelé hors de LearningGate : $found",found.all{it=="LearningGate.kt"})
         }
     }
 
     @Test fun encryptedStoresAreOpenedOnlyByStorageCode(){
-        val allowed=setOf("EncryptedKv.kt","NextWords.kt","UserLexicon.kt","EmojiHistory.kt","ClipboardHistory.kt","IncognitoApps.kt","Migration11to12.kt","KeyManager.kt","Panic.kt")
+        val allowed=setOf("EncryptedKv.kt","NextWords.kt","UserLexicon.kt","EmojiHistory.kt","ClipboardHistory.kt","IncognitoApps.kt","Migration11to12.kt","KeyManager.kt","Panic.kt","Snippets.kt","Backup.kt")
         val found=callers(Regex("EncryptedKv\\.(of|forgetAll|clearCaches)\\("))
         assertTrue("magasin chiffré ouvert hors du code de stockage : ${found-allowed}",(found-allowed).isEmpty())
     }
