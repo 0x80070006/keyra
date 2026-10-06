@@ -4,10 +4,10 @@ Format : contexte, décision, conséquences, considérations de sécurité. Un A
 
 | ADR | Sujet | Statut |
 |-----|-------|--------|
-| [0001](0001-coeur-kotlin-sans-rust.md) | Cœur en Kotlin, sans Rust ni JNI | accepté |
+| [0001](0001-coeur-kotlin-sans-rust.md) | Cœur en Kotlin, sans Rust ni JNI | remplacé par 0021 |
 | [0002](0002-pas-de-compose.md) | Pas de Jetpack Compose | accepté |
 | [0003](0003-licence-mit.md) | Licence MIT et réutilisation de code | accepté |
-| [0004](0004-android-minsdk-29.md) | Android seulement, minSdk 29 | **à valider** |
+| [0004](0004-android-minsdk-29.md) | Android seulement, minSdk 29 | accepté |
 | [0005](0005-stockage-chiffre-sans-sqlcipher.md) | Stockage chiffré par fichiers, sans SQLCipher | accepté |
 | [0006](0006-chiffrement-par-enveloppe.md) | Chiffrement par enveloppe, rien du Keystore pendant la frappe | accepté |
 | [0007](0007-retours-sensoriels-selon-securitypolicy.md) | Retours visuels et sonores selon `SecurityPolicy` | accepté |
@@ -24,3 +24,6 @@ Format : contexte, décision, conséquences, considérations de sécurité. Un A
 | [0018](0018-macrobenchmark-uiautomator.md) | Macrobenchmark et UiAutomator | accepté |
 | [0019](0019-plugin-foojay-resolver.md) | Retrait du plugin foojay-resolver | accepté |
 | [0020](0020-dependances-prevues.md) | Dépendances prévues | proposé |
+| [0021](0021-kotlin-et-rust-jni-minimal.md) | Kotlin et Rust, pont JNI minimal | accepté |
+| [0022](0022-dependances-rust.md) | Dépendances Rust | accepté |
+| [0023](0023-chaine-de-build-rust.md) | Chaîne de build Rust | accepté |

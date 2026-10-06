@@ -10,7 +10,7 @@
 | detekt (plugin Gradle) | 1 | build | Analyse statique et règle « pas de texte tapé dans les journaux » | Android Lint seul, moins riche pour les règles maison |
 | CycloneDX Gradle plugin | 1 | build | Générer la SBOM | — |
 | `androidx.profileinstaller` | 7 | **exécution** | Installer le Baseline Profile (frappe compilée dès l'installation) | Rien, et accepter la période de chauffe du JIT |
-| Bouncy Castle, API légère (`org.bouncycastle:bcprov-jdk18on`) | 6 | **exécution** | Argon2id pour l'export chiffré. La plateforme n'en fournit pas. | Réimplémenter Argon2 (interdit) ; PBKDF2 de la plateforme (plus faible face aux GPU) |
+| ~~Bouncy Castle~~ → crate Rust `argon2` (RustCrypto), voir ADR-0021 | 6 | **exécution** | Argon2id pour l'export chiffré. La plateforme n'en fournit pas. | Réimplémenter Argon2 (interdit) ; PBKDF2 de la plateforme (plus faible face aux GPU) |
 
 ## Règle
 Une dépendance d'**exécution** n'est acceptée que si (a) la plateforme ne fournit pas l'équivalent, (b) elle ne déclare ni permission ni composant dans son manifeste, et (c) elle est épinglée par une somme de contrôle. Les deux dépendances d'exécution prévues sont à réexaminer au moment venu. Pour Bouncy Castle, envisager de n'embarquer que la classe Argon2 après R8.

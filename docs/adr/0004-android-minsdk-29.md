@@ -1,6 +1,6 @@
 # ADR-0004 — Android seulement, minSdk 29
 
-- **Statut** : proposé, **à valider** (D4)
+- **Statut** : accepté (phase 1, validé par l'utilisateur) (D4)
 
 ## Contexte
 Keyra cible le Pixel 9a sous GrapheneOS (Android 16), avec `minSdk 24`. Le prompt sécurité vise Android 10 et plus, et/ou iOS.
