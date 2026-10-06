@@ -63,11 +63,15 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     /** Vrai quand l'écran courant est le mode frappe : un changement de Maj, de mode ou de suggestions ne reconstruit rien. */
     private var typingActive=false
     private var passwordField=false;private var pinPad=false;private var incognito=false
+    /** Majuscule posée par la majuscule automatique (et non par l'utilisateur) : peut être retirée. */
+    private var autoShifted=false
     private var pinDigits:List<String>?=null
     private var slideReturnMode=0
     private val keyListener=object:KeyboardView.Listener{
         override fun onKey(code:String,fromModeSlide:Boolean){
             val before=mode
+            if(code=="gestureShift"){press("shift");return}
+            if(code=="hide"){action("back");return}
             press(code)
             if(code=="symbols" || code=="moreSymbols" || code=="keypad" || code=="letters")slideReturnMode=before
             // Glissé depuis ?123 ou ABC : le caractère est tapé, puis le mode d'origine revient.
@@ -92,6 +96,12 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         passwordField=password;this.pinPad=pinPad;this.incognito=incognito
         pinDigits=if(pinPad && prefs.getBoolean("pin_shuffle",false))(0..9).map{it.toString()}.shuffled(java.security.SecureRandom()) else null
         mode=if(pinPad)4 else if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;suggestions=emptyList();queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
+    /** Majuscule automatique demandée par le service (début de phrase…). N'annule jamais une Maj de l'utilisateur. */
+    fun setAutoShift(on:Boolean){
+        if(locked || mode!=0 || panel.isNotEmpty())return
+        if(on && !shifted){shifted=true;autoShifted=true;refresh()}
+        else if(!on && shifted && autoShifted){shifted=false;autoShifted=false;refresh()}
+    }
     fun refreshTheme(){palette=KeyboardPrefs.palette(context);rebuild()}
     fun setSearchAction(value:Boolean){searchAction=value}
     fun refreshClipboardPanel(){if(panel=="clipboard")rebuild()}
@@ -207,6 +217,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             code=="moreSymbols" -> {mode=if(mode==2)1 else 2;refresh()}
             code=="shift" -> {
                 val now=SystemClock.uptimeMillis()
+                autoShifted=false
                 if(locked){locked=false;shifted=false;lastShiftTap=0}
                 else if(shifted && now-lastShiftTap<400){locked=true;shifted=true;lastShiftTap=0}
                 else{shifted=!shifted;lastShiftTap=if(shifted)now else 0}
@@ -271,6 +282,10 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             commitOnDown=prefs.getBoolean("commit_on_down",false),
             longPressMs=prefs.getInt("long_press_ms",300).coerceIn(200,600).toLong(),
             haptic=prefs.getBoolean("haptic",true),
+            trackpad=prefs.getBoolean("trackpad",true),
+            swipeDownHide=prefs.getBoolean("gesture_down",true),
+            swipeUpShift=prefs.getBoolean("gesture_up",true),
+            swipeLeftDeleteWord=prefs.getBoolean("gesture_left",false),
             quiet=secure || pinPad,
             password=passwordField)
         view.setKeys(typingKeys())

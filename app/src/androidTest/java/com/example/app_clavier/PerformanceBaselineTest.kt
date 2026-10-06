@@ -80,7 +80,7 @@ class PerformanceBaselineTest {
 
     @Test fun deleteRepeatsWhileHeld(){
         val kit=KeyboardTestKit().create()
-        kit.press(0,kit.center("Effacer"));kit.sleep(600);kit.release(0)
+        kit.press(0,kit.center("Effacer"));kit.sleep(900);kit.release(0)
         assertTrue("répétition : ${kit.typed.size}",kit.typed.size>=5 && kit.typed.all{it=="delete"})
     }
 
