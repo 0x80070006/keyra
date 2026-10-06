@@ -1,0 +1,17 @@
+French lexical data: fr_50k.txt, FrequencyWords, Hermit Dave.
+Source: https://github.com/hermitdave/FrequencyWords/blob/master/content/2018/fr/fr_50k.txt
+Data license: Creative Commons Attribution-ShareAlike 4.0 International.
+Derived from OpenSubtitles 2018. The source text is included unchanged in fr_frequency.txt.
+Runtime filters entries to letter/apostrophe/hyphen tokens of length 2–30. Frequencies rank correction candidates; this is not a normative grammar dictionary.
+https://github.com/hermitdave/FrequencyWords
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Emoji data: Unicode Emoji 17.0, Unicode, Inc.
+Source: https://www.unicode.org/Public/17.0.0/emoji/emoji-test.txt
+License: Unicode License v3, included as Unicode.txt.
+emoji.tsv is derived from fully-qualified entries, with French group labels.
+All 3944 fully-qualified sequences are included. Visual rendering depends on the installed system font.
+
+The French correction engine is an original Kotlin implementation of trie search with bounded Damerau-Levenshtein distance and frequency ranking. No external correction service receives typed text.
+
+French emoji search annotations: Unicode CLDR, Unicode, Inc. Sources: https://github.com/unicode-org/cldr-json/blob/main/cldr-json/cldr-annotations-full/annotations/fr/annotations.json and https://github.com/unicode-org/cldr/blob/main/common/annotationsDerived/fr.xml . The bundled emoji_search_fr.tsv selects French terms for the Emoji 17.0 catalogue. License: Unicode License v3, included as Unicode.txt.
