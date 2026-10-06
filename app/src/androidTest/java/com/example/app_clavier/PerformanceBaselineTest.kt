@@ -62,13 +62,14 @@ class PerformanceBaselineTest {
         lateinit var keyboard:MintKeyboard
         val typed=ArrayList<String>()
         instrumentation.runOnMainSync{keyboard=MintKeyboard(context){typed.add(it)};keyboard.reset(false,false);laidOut(keyboard)}
-        val scale=width/684f
+        // Échelles réelles du clavier : sur un écran court, la hauteur est plafonnée (sy < sx).
+        val scale=width/684f;val scaleY=keyboard.measuredHeight/612f
         fun deadFraction(top:Int,bottom:Int):Double {
             var dead=0;var total=0
             instrumentation.runOnMainSync{
                 val keys=(0 until keyboard.childCount).map{keyboard.getChildAt(it)}
                 for(ry in top until bottom step 2)for(rx in 0 until 684 step 2){
-                    val x=rx*scale;val y=ry*scale;total++
+                    val x=rx*scale;val y=ry*scaleY;total++
                     if(keys.none{x>=it.left && x<it.right && y>=it.top && y<it.bottom})dead++
                 }
             }
@@ -78,7 +79,7 @@ class PerformanceBaselineTest {
         val letters=deadFraction(95,391);val all=deadFraction(95,497)
         Log.i("KeyraBaseline","zones mortes : rangées de lettres %.1f %%, quatre rangées %.1f %%".format(letters*100,all*100))
         // Un appui au milieu de chaque écart horizontal de la rangée AZERTY ne doit rien taper aujourd'hui (défaut R1).
-        val gaps=listOf(71,138,206,274,342,410,477,545,613).map{it*scale to 137*scale}
+        val gaps=listOf(71,138,206,274,342,410,477,545,613).map{it*scale to 137*scaleY}
         gaps.forEach{(x,y)->tapAt(keyboard,x,y)}
         Log.i("KeyraBaseline","appuis dans les écarts : ${gaps.size}, caractères tapés : ${typed.size}")
         assertTrue("Zones mortes en hausse : $letters",letters<=BASELINE_DEAD_LETTERS)
