@@ -55,7 +55,7 @@ class SettingsActivity:Activity(){
         root.addView(SeekBar(this).apply{max=90;progress=prefs.getInt("latency_target",50)-10;setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
             override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){val target=v+10;latency.text=latencyLabel(target);if(user)prefs.edit().putInt("latency_target",target).apply()}
             override fun onStartTrackingTouch(s:SeekBar?){}
-            override fun onStopTrackingTouch(s:SeekBar?){Toast.makeText(this@SettingsActivity,InputLatency.summary(),Toast.LENGTH_SHORT).show()}
+            override fun onStopTrackingTouch(s:SeekBar?){Toast.makeText(this@SettingsActivity,InputLatency.summary(),Toast.LENGTH_SHORT).show()} // journal-ok: durées seulement, aucun texte tapé
         })})
         text("Le clavier vise 50 ms par défaut. Le diagnostic mesure le chemin local de l’appui à l’appel d’écriture dans le champ ; l’application qui reçoit le texte peut ensuite ajouter son propre délai.",14f)
         text("Apprentissage local",18f)

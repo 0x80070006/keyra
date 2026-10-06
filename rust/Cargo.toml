@@ -19,6 +19,10 @@ undocumented_unsafe_blocks = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+# Aucun texte tapé sur la sortie standard ou d'erreur (menace I-8).
+print_stdout = "deny"
+print_stderr = "deny"
+dbg_macro = "deny"
 indexing_slicing = "warn"
 
 [profile.release]
