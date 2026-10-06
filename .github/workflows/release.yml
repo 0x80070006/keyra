@@ -1,0 +1,86 @@
+# Publication d'une version (ADR-0031). Déclenchée par une étiquette « v* » poussée sur le dépôt.
+#  1. Build de release reproductible, contrôle du manifeste, SBOM CycloneDX.
+#  2. Signature APK v2 et v3 avec apksigner. La clé de release ne vit que dans les secrets du dépôt (jamais
+#     dans Git). Si une lignée de rotation existe (secret KEYRA_LINEAGE_B64), la signature v3.1 l'applique
+#     à partir de l'API 33.
+#  3. Signature Sigstore (cosign, sans clé, identité OIDC du workflow) de l'APK et de la SBOM.
+#  4. Publication GitHub avec l'APK, la SBOM, les empreintes et les bundles Sigstore.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: "30.0.16248370"
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: write   # créer la publication GitHub
+      id-token: write   # identité OIDC pour la signature Sigstore sans clé
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: NDK épinglé
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+      - name: Chaîne Rust épinglée
+        working-directory: rust
+        run: rustup toolchain install
+      - name: Build de release et SBOM (sans cache)
+        run: ./gradlew --no-build-cache --stacktrace :app:logGuard :app:testDebugUnitTest :app:assembleRelease :app:sbom
+      - name: Manifeste de release (permissions et composants en liste blanche)
+        run: |
+          AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2"
+          python3 tools/check_manifest.py "$AAPT2" app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Signature APK v2 + v3 (et v3.1 si une lignée de rotation existe)
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYRA_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYRA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYRA_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEYRA_KEY_PASSWORD }}
+          LINEAGE_B64: ${{ secrets.KEYRA_LINEAGE_B64 }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Secret KEYRA_KEYSTORE_B64 absent : pas de publication non signée."; exit 1; fi
+          umask 077
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          LINEAGE_ARGS=""
+          if [ -n "$LINEAGE_B64" ]; then
+            echo "$LINEAGE_B64" | base64 -d > "$RUNNER_TEMP/lineage.bin"
+            LINEAGE_ARGS="--lineage $RUNNER_TEMP/lineage.bin --rotation-min-sdk-version 33"
+          fi
+          mkdir -p dist
+          # shellcheck disable=SC2086
+          "$APKSIGNER" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" --key-pass env:KEY_PASSWORD \
+            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true $LINEAGE_ARGS \
+            --out "dist/keyra-$TAG.apk" app/build/outputs/apk/release/app-release-unsigned.apk
+          rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/lineage.bin"
+          "$APKSIGNER" verify --verbose --print-certs "dist/keyra-$TAG.apk"
+          cp app/build/reports/keyra/sbom.cdx.json "dist/keyra-$TAG.sbom.cdx.json"
+          cp app/build/outputs/apk/release/app-release-unsigned.apk "dist/keyra-$TAG-unsigned.apk"
+          (cd dist && sha256sum ./* > SHA256SUMS)
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Signature Sigstore (sans clé)
+        run: |
+          for f in dist/*.apk dist/*.json dist/SHA256SUMS; do
+            cosign sign-blob --yes --bundle "$f.sigstore.json" "$f"
+          done
+      - name: Publication GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/* --title "Keyra $TAG" --notes-file docs/release-notes.md --verify-tag

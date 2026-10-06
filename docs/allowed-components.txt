@@ -6,3 +6,5 @@ activity com.example.app_clavier.MediaInputActivity
 service com.example.app_clavier.MintInputService
 activity com.example.app_clavier.TransparencyActivity
 activity com.example.app_clavier.UnlockActivity
+provider androidx.startup.InitializationProvider
+receiver androidx.profileinstaller.ProfileInstallReceiver

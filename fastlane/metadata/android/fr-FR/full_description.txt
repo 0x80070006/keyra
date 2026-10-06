@@ -1,0 +1,30 @@
+Keyra est un clavier français rapide qui garde tout sur ton téléphone.
+
+<b>Aucun accès réseau.</b> Keyra ne demande pas la permission Internet : Android lui refuse toute connexion. Le tableau de transparence le prouve avec deux mesures lues dans le système.
+
+<b>Frappe réactive</b>
+<ul>
+<li>Une seule vue dessine le clavier ; la touche visée est la plus proche du doigt, sans zone morte.</li>
+<li>Un second doigt valide aussitôt le premier ; glisser pour corriger une frappe imprécise.</li>
+<li>Barre d'espace en pavé tactile, Retour arrière qui accélère puis efface mot par mot, gestes.</li>
+<li>Correction et prédiction françaises hors ligne (moteur Rust) ; bandeau mot tapé, correction en gras, suggestion suivante.</li>
+</ul>
+
+<b>Vie privée</b>
+<ul>
+<li>Tout ce que Keyra garde est chiffré (XChaCha20-Poly1305, clé protégée par le Keystore Android).</li>
+<li>Rien n'est appris dans un champ mot de passe, en navigation privée, dans une application incognito, ni pour un texte qui ressemble à un secret.</li>
+<li>Presse-papiers éphémère, pavé PIN mélangé en option, geste panique qui détruit la clé.</li>
+<li>Tableau de transparence : lister, chercher et supprimer chaque donnée ; export et import chiffrés par phrase de passe (Argon2id).</li>
+</ul>
+
+<b>À ta façon</b>
+<ul>
+<li>AZERTY, BÉPO, QWERTY, QWERTZ, Dvorak ; rangée de chiffres en option.</li>
+<li>Extraits de texte, protégeables par empreinte ; emoji avec recherche française.</li>
+<li>Thèmes, couleurs du téléphone, image de fond ; vibration, son et bulle d'aperçu réglables.</li>
+</ul>
+
+Limites : la dictée vocale passe par le service de reconnaissance du téléphone, qui peut être en ligne (Keyra prévient avant). La clé de données reste en mémoire tant que le téléphone est déverrouillé.
+
+Code libre (MIT). Dictionnaire FrequencyWords (CC BY-SA 4.0), annotations Unicode CLDR.

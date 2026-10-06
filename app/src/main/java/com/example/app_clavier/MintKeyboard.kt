@@ -280,6 +280,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         background=artwork?.let{BitmapDrawable(resources,it.background).apply{gravity=Gravity.FILL}}
             ?: if(palette.gradient)GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(palette.background,palette.special))else android.graphics.drawable.ColorDrawable(palette.background)
         removeAllViews();slots.clear();toolbarViews.clear()
+        updateSecureWindow()
         if(mode==3 && panel.isEmpty()){buildEmoji();requestLayout();return}
         if(panel.isNotEmpty()){toolbar();buildPanel();requestLayout();return}
         val view=keyboardView ?: KeyboardView(context,keyListener).also{keyboardView=it}
@@ -303,6 +304,15 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         add(view,0,0,684,612)
         typingActive=true
         requestLayout()
+    }
+    /**
+     * MASVS-PLATFORM-3 : la fenêtre du clavier est exclue des captures d'écran et de l'enregistrement d'écran
+     * quand elle montre le presse-papiers ou sert un champ privé (mot de passe, navigation privée, incognito).
+     */
+    private fun updateSecureWindow(){
+        val window=(context as? android.inputmethodservice.InputMethodService)?.window?.window ?: return
+        if(secure || panel=="clipboard")window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
     private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,strip,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito,
         com.example.app_clavier.keyboard.LayoutCatalog.get(context,prefs.getString("layout","azerty")),prefs.getBoolean("number_row",false)))
@@ -569,21 +579,32 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             "privacy" -> {
                 val privacy="""Confidentialité de Keyra
 
-Keyra est conçu pour traiter la saisie sur cet appareil. Il ne déclare aucune permission réseau et n’envoie pas tes frappes, tes suggestions, tes copies ou tes emoji à un service externe.
+Keyra ne demande pas la permission Internet : Android lui refuse toute connexion. Le tableau de transparence (Réglages) le montre avec deux preuves lues dans le système.
 
-Les suggestions, le dictionnaire personnel et les emoji récents sont stockés dans les données privées de l’application. Tu peux effacer les mots appris, les emoji et les 20 copies conservées depuis les réglages.
+Tout ce que Keyra garde — mots appris, paires de mots, mots personnels, emoji, presse-papiers, extraits, choix incognito — est chiffré (XChaCha20-Poly1305) avec une clé protégée par le Keystore Android, inutilisable quand le téléphone est verrouillé. Rien n’est appris dans un champ mot de passe, en navigation privée, dans une application incognito, ni pour un texte qui ressemble à un secret (carte, IBAN, code, clé).
 
-Le presse-papiers est lu uniquement lorsque le clavier est affiché, afin de proposer les dernières copies. Les champs de mot de passe et autres champs privés désactivent les suggestions, l’historique et le presse-papiers.
+Limites, honnêtement :
+• La dictée vocale passe par le service de reconnaissance du téléphone, qui peut être en ligne. Keyra prévient avant le premier usage.
+• Tant que le téléphone est déverrouillé, la clé de données est en mémoire ; elle est effacée quand l’écran s’éteint.
+• L’effacement de la mémoire est fait au mieux : le texte envoyé à l’application passe par des chaînes Java que Keyra ne peut pas effacer.
+• L’effacement sur mémoire flash n’est pas garanti : c’est pourquoi le geste panique détruit la clé (crypto-shredding).
 
-Une image de thème est lue localement à partir de l’emplacement que tu choisis. Elle reste sur le téléphone ; le flou est calculé localement.
-
-Keyra ne conserve pas d’historique général de tes frappes."""
+Geste panique : 3 secondes sur la touche menu, puis confirmer."""
                 val body=TextView(context).apply{text=privacy;textSize=16f;setTextColor(palette.text);setPadding(18,12,18,12);setLineSpacing(6f,1f)}
                 add(ScrollView(context).apply{addView(body)},30,95,624,370)
                 button("Ouvrir les réglages de confidentialité","settings",70,480,544,54,small=true)
             }
             "patchnotes" -> {
-                val notes="""Notes de version — Keyra 11.0
+                val notes="""Notes de version — Keyra 12.0
+
+• Frappe plus réactive : une seule vue dessine le clavier, la touche visée est la plus proche du doigt, un second doigt valide aussitôt le premier.
+• Correction et prédiction réécrites en Rust : plus justes (83,5 % au lieu de 79,5 %) et 20 fois plus rapides.
+• Bandeau à la SwiftKey : mot tapé, correction en gras, suggestion suivante ; appui long pour masquer une suggestion.
+• Données chiffrées, presse-papiers éphémère, incognito par application, geste panique.
+• Tableau de transparence, extraits de texte (protégeables par empreinte), export et import chiffrés.
+• Dispositions BÉPO, QWERTY, QWERTZ et Dvorak ; rangée de chiffres ; vibration, son et bulle d’aperçu réglables.
+
+Keyra 11.0
 
 • Traduction locale légère français ↔ anglais, sans accès réseau.
 • Correction immédiate à l’espace avec complétions et prédictions du mot suivant.

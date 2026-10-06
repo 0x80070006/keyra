@@ -1,0 +1,4 @@
+# Build « benchmark » seulement : noms lisibles pour générer le Baseline Profile (ADR-0030).
+# R8 réécrit ensuite le profil selon le renommage du build de release.
+-dontobfuscate
+-dontoptimize

@@ -1,0 +1,6 @@
+• Frappe plus réactive : touche la plus proche, second doigt immédiat, glisser pour corriger.
+• Correction et prédiction en Rust : plus justes et 20 fois plus rapides.
+• Bandeau mot tapé, correction en gras, suggestion suivante.
+• Données chiffrées, presse-papiers éphémère, incognito par application, geste panique.
+• Tableau de transparence, extraits de texte, export et import chiffrés.
+• BÉPO, QWERTY, QWERTZ, Dvorak ; rangée de chiffres ; vibration, son et aperçu réglables.

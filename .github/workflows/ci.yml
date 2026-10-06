@@ -58,7 +58,7 @@ jobs:
         run: rustup toolchain install
       - name: Build et vérifications
         run: ./gradlew --stacktrace :app:logGuard :app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:assembleDebugAndroidTest :app:sbom :benchmark:assembleBenchmark
-      - name: Manifeste de release (aucune permission, composants en liste blanche, ni debuggable ni profileable)
+      - name: Manifeste de release (permissions et composants en liste blanche, ni debuggable ni profileable)
         run: |
           AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2"
           python3 tools/check_manifest.py "$AAPT2" app/build/outputs/apk/release/app-release-unsigned.apk
