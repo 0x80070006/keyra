@@ -49,6 +49,18 @@ class SettingsActivity:Activity(){
         text("Saisie et réactivité",21f)
         root.addView(Switch(this).apply{text="Retour haptique à chaque touche";setTextColor(p.text);isChecked=prefs.getBoolean("haptic",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("haptic",v).apply()}})
         root.addView(Switch(this).apply{text="Deux espaces insèrent un point";setTextColor(p.text);isChecked=prefs.getBoolean("double_space_period",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("double_space_period",v).apply()}})
+        root.addView(Switch(this).apply{setText(R.string.setting_commit_on_down);setTextColor(p.text);isChecked=prefs.getBoolean("commit_on_down",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("commit_on_down",v).apply()}})
+        text("Par défaut, la touche est validée au relâchement : tu peux glisser le doigt pour corriger une frappe imprécise, ou glisser depuis ?123 vers un symbole. Un second doigt valide aussitôt la frappe du premier.",14f)
+        val longPress=TextView(this).apply{setTextColor(p.text);textSize=16f;setPadding(0,dp(14),0,0)}
+        fun longPressLabel(v:Int)="Appui long (accents, chiffres) : $v ms"
+        longPress.text=longPressLabel(prefs.getInt("long_press_ms",300));root.addView(longPress)
+        root.addView(SeekBar(this).apply{max=40;progress=(prefs.getInt("long_press_ms",300)-200)/10;setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
+            override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){val ms=200+v*10;longPress.text=longPressLabel(ms);if(user)prefs.edit().putInt("long_press_ms",ms).apply()}
+            override fun onStartTrackingTouch(s:SeekBar?){}
+            override fun onStopTrackingTouch(s:SeekBar?){}
+        })})
+        root.addView(Switch(this).apply{setText(R.string.setting_pin_shuffle);setTextColor(p.text);isChecked=prefs.getBoolean("pin_shuffle",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("pin_shuffle",v).apply()}})
+        text("Dans les champs de code PIN, les chiffres changent de place à chaque fois : quelqu’un qui regarde tes doigts ne peut pas deviner le code. Les champs privés n’affichent jamais la touche enfoncée.",14f)
         val latency=TextView(this).apply{setTextColor(p.text);textSize=16f;setPadding(0,dp(14),0,0)}
         fun latencyLabel(v:Int)="Objectif de latence : ≤ ${v} ms — ACTION_DOWN jusqu’à l’envoi du caractère"
         latency.text=latencyLabel(prefs.getInt("latency_target",50));root.addView(latency)

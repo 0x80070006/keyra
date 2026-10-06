@@ -10,6 +10,9 @@ import android.os.SystemClock
 import android.view.*
 import android.widget.*
 import java.util.concurrent.Executors
+import com.example.app_clavier.keyboard.KeyboardLayouts
+import com.example.app_clavier.keyboard.KeyboardView
+import com.example.app_clavier.keyboard.LayoutState
 import kotlin.math.abs
 
 /** Layout positions are in the user's 684 px reference coordinate system. */
@@ -18,11 +21,6 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private data class Slot(val x:Int,val y:Int,val w:Int,val h:Int)
     private val slots=ArrayList<Slot>()
     private val keyCodes=HashMap<Key,String>()
-    private val extraPointers=HashMap<Int,Key>()
-    private val popupParts=ArrayList<View>()
-    private val popupChoices=LinkedHashMap<Key,String>()
-    private var popupOwner:Key?=null
-    private var popupBase=""
     private var lastShiftTap=0L
     private val toolbarViews=ArrayList<View>()
     private var buildingToolbar=false
@@ -59,17 +57,45 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private var stableRebuildPending=false
     /** Full view rebuilds since creation (performance diagnostic and tests). */
     var rebuildCount=0;private set
-    private val accentMap=mapOf("a" to "àâäæ","e" to "éèêë","i" to "îï","o" to "ôöœ","u" to "ùûü","c" to "ç","n" to "ñ","y" to "ÿ")
+    /** Vue unique des touches de frappe (phase 2) ; null tant qu'aucun mode frappe n'a été affiché. */
+    private var keyboardView:KeyboardView?=null
+    /** Vrai quand l'écran courant est le mode frappe : un changement de Maj, de mode ou de suggestions ne reconstruit rien. */
+    private var typingActive=false
+    private var passwordField=false;private var pinPad=false
+    private var pinDigits:List<String>?=null
+    private var slideReturnMode=0
+    private val keyListener=object:KeyboardView.Listener{
+        override fun onKey(code:String,fromModeSlide:Boolean){
+            val before=mode
+            press(code)
+            if(code=="symbols" || code=="moreSymbols" || code=="keypad" || code=="letters")slideReturnMode=before
+            // Glissé depuis ?123 ou ABC : le caractère est tapé, puis le mode d'origine revient.
+            if(fromModeSlide && mode!=slideReturnMode){mode=slideReturnMode;refresh()}
+        }
+        override fun onLongPress(code:String)=when(code){
+            "shift"->{shifted=true;locked=true;lastShiftTap=0;refresh();true}
+            " "->{action("picker");true}
+            else->false
+        }
+        override fun onReplace(base:String,choice:String){
+            action("replaceLong:$base:${if(shifted && choice.length==1 && choice[0].isLetter())choice.uppercase() else choice}")
+        }
+        override fun onTouchDown(){lastInputDown=SystemClock.uptimeMillis()}
+    }
     init {isMotionEventSplittingEnabled=true;rebuild()}
     override fun shouldDelayChildPressedState()=false
     override fun performClick():Boolean {super.performClick();return true}
-    fun reset(numeric:Boolean,privateInput:Boolean){mode=if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;suggestions=emptyList();queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
+    /** `privateInput` : ni historique ni surbrillance ; `password` : TalkBack dit « point » ; `pinPad` : pavé PIN. */
+    fun reset(numeric:Boolean,privateInput:Boolean,password:Boolean=false,pinPad:Boolean=false){
+        passwordField=password;this.pinPad=pinPad
+        pinDigits=if(pinPad && prefs.getBoolean("pin_shuffle",false))(0..9).map{it.toString()}.shuffled(java.security.SecureRandom()) else null
+        mode=if(pinPad)4 else if(numeric)1 else 0;panel="";emojiSearch=false;emojiQuery="";shifted=false;locked=false;secure=privateInput;accents=null;suggestions=emptyList();queuedSuggestions=null;touchHandler.removeCallbacks(renderSuggestions);rebuild()}
     fun refreshTheme(){palette=KeyboardPrefs.palette(context);rebuild()}
     fun setSearchAction(value:Boolean){searchAction=value}
     fun refreshClipboardPanel(){if(panel=="clipboard")rebuild()}
     fun showTranslation(source:String,result:String){translationSource=source;translationResult=result;if(panel=="translate")stableRebuild()}
     private fun stableRebuild(){
-        if(touching || extraPointers.isNotEmpty()){stableRebuildPending=true;return}
+        if(touching){stableRebuildPending=true;return}
         stableRebuildPending=false;rebuild()
     }
     private val renderSuggestions=object:Runnable {
@@ -91,10 +117,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private fun replaceSuggestions(values:List<String>):Boolean{
         if(values==suggestions)return true
         suggestions=values
-        if(panel.isEmpty() && mode==0 && accents==null){
-            toolbarViews.toList().forEach{v->val i=indexOfChild(v);if(i>=0){slots.removeAt(i);removeViewAt(i)}}
-            toolbarViews.clear();toolbar();requestLayout()
-        }
+        if(panel.isEmpty() && mode==0 && accents==null)refresh()
         return true
     }
     private fun releasePressed(cancel:Boolean){
@@ -103,27 +126,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     override fun dispatchTouchEvent(event:MotionEvent)=traced("Keyra.touch"){routeTouch(event)}
     private fun routeTouch(event:MotionEvent):Boolean {
         if(event.actionMasked==MotionEvent.ACTION_DOWN)touching=true
-        if(panel.isEmpty() && mode!=3 && event.actionMasked==MotionEvent.ACTION_POINTER_DOWN){
-            val index=event.actionIndex
-            val target=(childCount-1 downTo 0).asSequence().mapNotNull{getChildAt(it) as? Key}
-                .firstOrNull{event.getX(index)>=it.left && event.getX(index)<it.right && event.getY(index)>=it.top && event.getY(index)<it.bottom}
-            val code=target?.let{keyCodes[it]}
-            // Android delivers a multi-touch stream to the first child only.  Route every
-            // printable second finger here, including the space bar, so a fast thumb space
-            // cannot be swallowed while another finger is still down.
-            if(target!=null && code!=null && (code.length==1 || code=="delete" || code=="enter")){
-                extraPointers[event.getPointerId(index)]=target
-                InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis()
-                target.isPressed=true
-                press(code)
-                if(prefs.getBoolean("haptic",true))target.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                return true
-            }
-        }
-        if(event.actionMasked==MotionEvent.ACTION_POINTER_UP){
-            extraPointers.remove(event.getPointerId(event.actionIndex))?.let{it.flash();it.isPressed=false;return true}
-        }
-        if(event.actionMasked==MotionEvent.ACTION_CANCEL){extraPointers.values.forEach{it.isPressed=false};extraPointers.clear();releasePressed(true)}
+        if(event.actionMasked==MotionEvent.ACTION_CANCEL)releasePressed(true)
         val result=super.dispatchTouchEvent(event)
         if(event.actionMasked==MotionEvent.ACTION_UP || event.actionMasked==MotionEvent.ACTION_CANCEL){
             releasePressed(event.actionMasked==MotionEvent.ACTION_CANCEL);touching=false
@@ -143,46 +146,6 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     }
     private fun add(v:View,x:Int,y:Int,w:Int,h:Int){addView(v);slots.add(Slot(x,y,w,h));if(buildingToolbar)toolbarViews.add(v)}
     private fun label(text:String,size:Float=18f)=TextView(context).apply {this.text=text;textSize=size;setTextColor(palette.text);gravity=Gravity.CENTER;isFocusable=false}
-    private fun hideAccentPopup(){
-        popupParts.asReversed().forEach{v->val i=indexOfChild(v);if(i>=0){slots.removeAt(i);removeViewAt(i)}}
-        popupParts.clear();popupChoices.clear();popupOwner=null;popupBase=""
-        requestLayout()
-    }
-    private fun showAccentPopup(base:String,hint:String?,owner:Key){
-        val index=indexOfChild(owner);if(index<0)return
-        val anchor=slots[index]
-        val options=ArrayList<String>()
-        options.add(base)
-        accentMap[base]?.forEach{options.add(it.toString())}
-        hint?.let{options.add(it)}
-        if(options.size<2)return
-        hideAccentPopup()
-        popupOwner=owner;popupBase=base
-        val width=12+options.size*54+(options.size-1)*4
-        val x=(anchor.x+anchor.w/2-width/2).coerceIn(4,680-width)
-        val y=(anchor.y-84).coerceAtLeast(4)
-        val backdrop=View(context).apply{background=GradientDrawable().apply{setColor(palette.special);cornerRadius=14f}}
-        add(backdrop,x,y,width,80);popupParts.add(backdrop)
-        options.forEachIndexed{i,value->
-            val option=Key(context,value,palette,false,false,null,40f,false,false,false,false,prefs.getBoolean("haptic",true))
-            option.contentDescription=if(value==base)"$base sans accent" else "$base : $value"
-            option.setOnTouchListener{_,event->
-                if(event.actionMasked==MotionEvent.ACTION_DOWN){
-                    if(prefs.getBoolean("haptic",true))option.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    val output=if(shifted && value.length==1 && value[0].isLetter())value.uppercase() else value
-                    action("replaceLong:$base:$output");hideAccentPopup()
-                }
-                true
-            }
-            add(option,x+6+i*58,y+4,54,72);popupParts.add(option);popupChoices[option]=value
-        }
-        requestLayout()
-    }
-    private fun selectPopupAt(x:Float,y:Float):Boolean {
-        val selected=popupChoices.entries.firstOrNull{(key,_)->x>=key.left && x<key.right && y>=key.top && y<key.bottom}?.value ?: return false
-        val output=if(shifted && selected.length==1 && selected[0].isLetter())selected.uppercase() else selected
-        action("replaceLong:$popupBase:$output");hideAccentPopup();return true
-    }
     private fun button(text:String,code:String,x:Int,y:Int,w:Int,h:Int,special:Boolean=false,round:Boolean=false,hint:String?=null,small:Boolean=false,transparent:Boolean=false) {
         val red=code.startsWith("hand:") && prefs.getInt("hand",0)==code.substringAfter(':').toIntOrNull()
         val texture=if(prefs.getString("theme","brown")=="image")artwork?.keys else null
@@ -191,14 +154,11 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         view.contentDescription=when(code){" "->"Espace";"symbols"->"Chiffres et symboles";"emoji"->"Emoji";"shift"->if(locked)"Majuscules verrouillées" else "Majuscules";"delete"->"Effacer";"menu"->"Panneaux de fonctions";"moreSymbols"->"Deuxième page de symboles";"enter"->"Entrée";else->text}
         view.setOnClickListener{press(code)}
         if(code.length==1 || code.startsWith("emojiQuery:")){
-            var held=false
-            val popup=Runnable{if(held && view.isAttachedToWindow && mode==0){showAccentPopup(code,hint,view)}}
             view.setOnTouchListener{v,event->
                 when(event.actionMasked){
-                    MotionEvent.ACTION_DOWN->{held=true;InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);if(mode==0 && (hint!=null || accentMap.containsKey(code)))touchHandler.postDelayed(popup,350)}
-                    MotionEvent.ACTION_MOVE->{if(popupOwner==v)popupChoices.keys.forEach{it.isPressed=event.x+v.left>=it.left && event.x+v.left<it.right && event.y+v.top>=it.top && event.y+v.top<it.bottom}}
-                    MotionEvent.ACTION_UP->{held=false;touchHandler.removeCallbacks(popup);if(popupOwner==v)selectPopupAt(event.x+v.left,event.y+v.top);(v as Key).flash();v.isPressed=false}
-                    MotionEvent.ACTION_CANCEL->{held=false;touchHandler.removeCallbacks(popup);v.isPressed=false}
+                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)}
+                    MotionEvent.ACTION_UP->{(v as Key).flash();v.isPressed=false}
+                    MotionEvent.ACTION_CANCEL->v.isPressed=false
                 }
                 true
             }
@@ -229,11 +189,10 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         add(view,x,y,w,h)
     }
     private fun press(code:String) {
-        if(popupParts.isNotEmpty())hideAccentPopup()
         if(code!="shift")lastShiftTap=0
         when {
             code=="menu" -> {panel=if(panel.isEmpty())"menu" else "";accents=null;rebuild()}
-            code=="letters" -> {panel="";mode=0;emojiSearch=false;emojiQuery="";accents=null;rebuild()}
+            code=="letters" -> {panel="";mode=0;emojiSearch=false;emojiQuery="";accents=null;refresh()}
             code=="emoji" -> {panel="";mode=if(mode==3)0 else 3;emojiSearch=false;emojiQuery="";accents=null;rebuild()}
             code=="emojiSearch" -> {emojiSearch=true;emojiQuery="";rebuild()}
             code=="emojiSearchBack" -> {emojiSearch=false;emojiQuery="";rebuild()}
@@ -241,15 +200,15 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             code=="emojiSearchShift" -> {shifted=!shifted;rebuild()}
             code.startsWith("emojiQuery:") -> {emojiQuery+=code.removePrefix("emojiQuery:");refreshEmojiSearch()}
             code.startsWith("emojiCategory:") -> {category=code.removePrefix("emojiCategory:");emojiSearch=false;rebuild()}
-            code=="keypad" -> {panel="";mode=4;rebuild()}
-            code=="symbols" -> {panel="";mode=if(mode==1 || mode==2)0 else 1;accents=null;rebuild()}
-            code=="moreSymbols" -> {mode=if(mode==2)1 else 2;rebuild()}
+            code=="keypad" -> {panel="";mode=4;refresh()}
+            code=="symbols" -> {panel="";mode=if(mode==1 || mode==2)0 else 1;accents=null;refresh()}
+            code=="moreSymbols" -> {mode=if(mode==2)1 else 2;refresh()}
             code=="shift" -> {
                 val now=SystemClock.uptimeMillis()
                 if(locked){locked=false;shifted=false;lastShiftTap=0}
                 else if(shifted && now-lastShiftTap<400){locked=true;shifted=true;lastShiftTap=0}
                 else{shifted=!shifted;lastShiftTap=if(shifted)now else 0}
-                stableRebuild()
+                refresh()
             }
             code=="next" -> {page=(page+1)%3;rebuild()}
             code=="translationSwap" -> {translationDirection=if(translationDirection=="fr-en")"en-fr" else "fr-en";translationResult="";rebuild()}
@@ -260,14 +219,14 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             code.startsWith("theme:") -> {prefs.edit().putString("theme",code.substringAfter(':')).apply();refreshTheme()}
             code.startsWith("hand:") -> {val chosen=code.substringAfter(':').toInt();val next=if(prefs.getInt("hand",0)==chosen)0 else chosen;prefs.edit().putInt("hand",next).apply();rebuild()}
             code=="resetSize" -> {prefs.edit().putInt("height",100).putInt("hand",0).apply();rebuild()}
-            code.startsWith("suggest:") -> {action(code);suggestions=emptyList();stableRebuild()}
+            code.startsWith("suggest:") -> {action(code);suggestions=emptyList();refresh()}
             code.startsWith("clip:") -> {action(code);panel="";rebuild()}
             code=="clearclips" -> {action(code);rebuild()}
             code=="language" -> action("picker")
             else -> {
                 val literal=if(code.startsWith("char:"))code.removePrefix("char:") else code
                 action(if(shifted && literal.length==1 && literal[0].isLetter())literal.uppercase() else literal)
-                if(literal.length==1){val changed=shifted && !locked || accents!=null || panel=="accents";if(!locked)shifted=false;accents=null;if(panel=="accents")panel="";if(changed)stableRebuild()}
+                if(literal.length==1){val changed=shifted && !locked || accents!=null || panel=="accents";if(!locked)shifted=false;accents=null;if(panel=="accents")panel="";if(changed)refresh()}
             }
         }
     }
@@ -289,7 +248,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private fun rebuild(){rebuildCount++;traced("Keyra.rebuild"){rebuildViews()}}
     private fun rebuildViews() {
         stableRebuildPending=false
-        popupParts.clear();popupChoices.clear();popupOwner=null;popupBase="";keyCodes.clear();extraPointers.clear()
+        typingActive=false;keyCodes.clear()
         emojiSearchBar=null;emojiSearchCount=null;emojiSearchGrid=null;emojiSearchAdapter=null
         recentViews.clear();recentRows=0
         palette=KeyboardPrefs.palette(context)
@@ -300,11 +259,36 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             ?: if(palette.gradient)GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(palette.background,palette.special))else android.graphics.drawable.ColorDrawable(palette.background)
         removeAllViews();slots.clear();toolbarViews.clear()
         if(mode==3 && panel.isEmpty()){buildEmoji();requestLayout();return}
-        toolbar()
-        if(panel.isNotEmpty()){buildPanel();requestLayout();return}
-        when(mode){4->buildNumpad();else->{buildKeys();bottom()}}
+        if(panel.isNotEmpty()){toolbar();buildPanel();requestLayout();return}
+        val view=keyboardView ?: KeyboardView(context,keyListener).also{keyboardView=it}
+        view.palette=palette
+        view.texture=if(prefs.getString("theme","brown")=="image")artwork?.keys else null
+        view.settings=KeyboardView.Settings(
+            commitOnDown=prefs.getBoolean("commit_on_down",false),
+            longPressMs=prefs.getInt("long_press_ms",300).coerceIn(200,600).toLong(),
+            haptic=prefs.getBoolean("haptic",true),
+            quiet=secure || pinPad,
+            password=passwordField)
+        view.setKeys(typingKeys())
+        add(view,0,0,684,612)
+        typingActive=true
         requestLayout()
     }
+    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,suggestions,if(mode==0)accents else null,if(mode==4)pinDigits else null))
+    /** Met à jour les touches sans reconstruire les vues, sauf si l'écran change de nature (panneau, emoji). */
+    private fun refresh(){
+        val view=keyboardView
+        if(typingActive && view!=null && panel.isEmpty() && mode!=3)view.setKeys(typingKeys()) else stableRebuild()
+    }
+    /** Tests : rectangle, en pixels de cette vue, de la touche ou du bouton qui porte cette description. */
+    fun keyRect(description:String):RectF? {
+        val view=keyboardView
+        if(typingActive && view!=null){val r=RectF();if(view.keyBounds(description,r)){r.offset(view.left.toFloat(),view.top.toFloat());return r}}
+        for(i in 0 until childCount){val c=getChildAt(i);if(c.contentDescription?.toString()==description)return RectF(c.left.toFloat(),c.top.toFloat(),c.right.toFloat(),c.bottom.toFloat())}
+        return null
+    }
+    /** Tests : description de la touche que viserait un appui en (x, y), en mode frappe. */
+    fun descriptionAt(x:Float,y:Float):String?=keyboardView?.takeIf{typingActive}?.let{it.descriptionAt(x-it.left,y-it.top)}
     private fun refreshEmojiSearch(){
         emojiSearchBar?.text="⌕   ${if(emojiQuery.isEmpty())"Rechercher" else emojiQuery}"
         val query=emojiQuery;val version=++searchGeneration
@@ -322,37 +306,6 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
                 }
             }
         }
-    }
-    private fun buildKeys() {
-        val rows=when(mode){1->listOf("1234567890","@#€_&-+()/","*\"':;!?");2->listOf("~`|•√π÷×¶∆","£¢$¥^°={}\\","%©®™✓[]");else->listOf("azertyuiop","qsdfghjklm","wxcvbn'")}
-        val xs=listOf(8,76,143,211,279,347,414,482,550,618)
-        for(r in 0..2)rows[r].forEachIndexed{i,ch->
-            val x=if(r==2)listOf(110,177,245,312,380,448,516)[i] else xs[i]
-            button(if(mode==0 && shifted)ch.uppercase() else ch.toString(),ch.toString(),x,listOf(95,200,306)[r],if(r==2 && i in 3..4)59 else 58,85,hint=if(r==0 && mode==0)((i+1)%10).toString()else null)
-        }
-        button(if(mode==0)"shift" else if(mode==1)"=\\<" else "?123",if(mode==0)"shift" else "moreSymbols",8,306,91,85,true,small=mode!=0)
-        button("delete","delete",584,306,91,85,true)
-    }
-    private fun bottom() {
-        button(if(mode==1 || mode==2)"ABC" else "?123","symbols",8,412,91,85,true,true,small=true)
-        button(if(mode==0 && !searchAction)"/" else ",",if(mode==0 && !searchAction)"/" else ",",110,412,58,85,true)
-        button(if(mode==0)"smile" else "123\n456\n789","${if(mode==0)"emoji" else "keypad"}",177,412,58,85,special=mode==3,small=mode!=0)
-        button(if(mode==3)"ABC" else "",if(mode==3)"letters" else " ",245,412,261,86,small=true)
-        button(".",".",517,412,57,85,true)
-        button(if(searchAction)"search" else "enter","enter",585,412,90,85,true,true)
-        if(mode==0)button("à é ç  ·  accents","accents",220,517,244,36,small=true,transparent=true)
-    }
-    private fun buildNumpad(){
-        val ys=listOf(95,200,306,412)
-        val center=listOf(listOf("1","2","3"),listOf("4","5","6"),listOf("7","8","9"),listOf("0","=","."))
-        ys.forEachIndexed { row,y ->
-            val left=listOf("+","-","*","ABC")[row]
-            button(left,if(left=="ABC")"letters" else left,8,y,91,85,true,small=left=="ABC")
-            center[row].forEachIndexed { col,value -> button(value,value,110+col*131,y,120,85) }
-            val right=listOf("%"," ","delete","enter")[row]
-            button(if(right==" ")"Espace" else if(right=="enter" && searchAction)"search" else right,right,503,y,172,85,true,small=right==" ")
-        }
-        button("?123","symbols",584,505,91,45,true,true,small=true)
     }
     private fun recentFor():List<String> {
         if(secure)return emptyList()

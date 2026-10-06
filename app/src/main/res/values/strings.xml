@@ -1,2 +1,4 @@
-<resources><string name="app_name">Keyra</string><string name="subtype_name">Français · AZERTY</string></resources>
+<resources><string name="app_name">Keyra</string><string name="subtype_name">Français · AZERTY</string>    <string name="setting_commit_on_down">Valider la touche dès l’appui (comportement de Keyra 11)</string>
+    <string name="setting_pin_shuffle">Pavé PIN mélangé à chaque ouverture</string>
+</resources>
 
