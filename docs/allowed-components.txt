@@ -1,0 +1,6 @@
+# Composants autorisés dans le manifeste fusionné de release : « type nom », un par ligne.
+# Tout ajout (y compris venu d'une bibliothèque) exige un ADR. Voir menace E-1.
+activity com.example.app_clavier.MainActivity
+activity com.example.app_clavier.SettingsActivity
+activity com.example.app_clavier.MediaInputActivity
+service com.example.app_clavier.MintInputService
