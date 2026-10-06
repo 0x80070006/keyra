@@ -16,5 +16,5 @@ workspace = true
 
 [dependencies]
 keyra-core = { path = "../keyra-core" }
-jni-sys = "=0.3.0"
+jni-sys = "=0.4.1"
 zeroize = "1.9"
