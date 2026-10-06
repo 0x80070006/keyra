@@ -38,6 +38,9 @@ class PerformanceBaselineTest {
         instrumentation.runOnMainSync{laidOut(keyboard)}
     }
     private fun tap(keyboard:MintKeyboard,label:String){
+        // Hors fenêtre, View.onTouchEvent met le clic en file sans jamais l'exécuter :
+        // les touches à clic (Maj) sont donc déclenchées directement, comme dans FeatureTest.
+        if(label=="Majuscules"){instrumentation.runOnMainSync{find(keyboard,label).performClick();laidOut(keyboard)};return}
         var x=0f;var y=0f
         instrumentation.runOnMainSync{val key=find(keyboard,label);x=(key.left+key.right)/2f;y=(key.top+key.bottom)/2f}
         tapAt(keyboard,x,y)
@@ -81,8 +84,22 @@ class PerformanceBaselineTest {
         assertTrue("Zones mortes en hausse : $letters",letters<=BASELINE_DEAD_LETTERS)
     }
 
+    @Test fun correctorCostOnDevice(){
+        val loadStart=System.nanoTime()
+        val engine=FrenchCorrector(context.assets.open("fr_frequency.txt").reader())
+        val loadMs=(System.nanoTime()-loadStart)/1_000_000.0
+        // Préfixes d'une phrase synthétique, avec quelques fautes : ce que le service calcule à chaque frappe.
+        val words="bonjour je tetse la frappe rapdie sur ce clavier pour mesurer chaque imgae dessinee pendnat une saisie normale".split(' ')
+        val prefixes=words.flatMap{w->(2..w.length).map{w.take(it)}}
+        repeat(3){prefixes.forEach{engine.candidates(it,55);engine.correction(it,55)}}
+        val samples=prefixes.map{p->val s=System.nanoTime();engine.candidates(p,55);engine.correction(p,55);System.nanoTime()-s}.sorted()
+        fun at(q:Double)=samples[((samples.size-1)*q).toInt()]/1_000_000.0
+        Log.i("KeyraBaseline","dictionnaire chargé en %.0f ms ; coût par frappe p50 %.2f ms, p95 %.2f ms, max %.2f ms (%d préfixes)"
+            .format(loadMs,at(.5),at(.95),at(1.0),samples.size))
+    }
+
     private companion object {
-        const val BASELINE_REBUILDS=99
-        const val BASELINE_DEAD_LETTERS=0.30
+        const val BASELINE_REBUILDS=4 // mesuré en phase 0 : 2 par appui sur Maj
+        const val BASELINE_DEAD_LETTERS=0.27 // mesuré en phase 0 : 26,7 %
     }
 }

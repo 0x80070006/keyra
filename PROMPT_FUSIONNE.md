@@ -91,7 +91,7 @@ Chaque arbitrage fera l'objet d'un ADR (Architecture Decision Record) en phase 0
 
 | # | Constat | Où |
 |---|---------|----|
-| R1 | **Environ 30 % de la zone des lettres ne tape rien.** Les touches font 58 × 85 sur un pas de 68 × ~105 (repère 684). Un appui dans un écart ne touche aucune vue, et le clavier le consomme sans rien taper. | `MintKeyboard.kt:323-326`, `:136-139` |
+| R1 | **Environ 27 % de la zone des lettres ne tape rien** (26,7 % mesurés en phase 0). Les touches font 58 × 85 sur un pas de 68 × ~105 (repère 684). Un appui dans un écart ne touche aucune vue, et le clavier le consomme sans rien taper. | `MintKeyboard.kt:323-326`, `:136-139` |
 | R2 | **`rebuild()` recrée toutes les vues** à chaque Maj, au retour en minuscule, et 2 à 3 fois par affichage (`configure` est appelé dans `onStartInput` et `onStartInputView`, `refreshTheme` dans `onWindowShown`). | `MintKeyboard.kt:285-302`, `:248`, `:266` ; `MintInputService.kt:56-58` |
 | R3 | **Lectures IPC synchrones à chaque frappe** (`getTextBeforeCursor`, `getSelectedText`). | `MintInputService.kt:87`, `:107`, `:115`, `:121`, `:147`, `:204` |
 | R4 | **Correction parfois différée** : le mot fautif est écrit, puis remplacé, et le texte saute. | `MintInputService.kt:126-143` |
