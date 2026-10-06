@@ -90,7 +90,8 @@ class MintInputService:InputMethodService(){
         settings=ImeSettings.from(p)
         when(key){
             "theme","color1","color2","background_uri","background_blur","key_blur","height","hand","haptic","commit_on_down","long_press_ms","pin_shuffle",
-            "gesture_down","gesture_up","gesture_left","trackpad"->keyboard?.refreshTheme()
+            "gesture_down","gesture_up","gesture_left","trackpad",
+            "haptic_mode","haptic_strength","key_sound","key_sound_volume","key_preview","layout","number_row"->keyboard?.refreshTheme()
             "correction","tolerance"->scheduleSuggestions()
         }
     }}

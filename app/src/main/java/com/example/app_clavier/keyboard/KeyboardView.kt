@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.*
 import android.os.Bundle
 import android.os.SystemClock
-import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.accessibility.AccessibilityEvent
@@ -44,14 +43,20 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
     }
 
     /** `quiet` : champ sensible ou pavé PIN, sans surbrillance (ADR-0007). `password` : TalkBack dit « point ». */
-    class Settings(val commitOnDown:Boolean=false,val longPressMs:Long=300,val haptic:Boolean=true,val quiet:Boolean=false,val password:Boolean=false,
-                   val trackpad:Boolean=true,val swipeDownHide:Boolean=true,val swipeUpShift:Boolean=true,val swipeLeftDeleteWord:Boolean=false)
+    class Settings(val commitOnDown:Boolean=false,val longPressMs:Long=300,val quiet:Boolean=false,val password:Boolean=false,
+                   val trackpad:Boolean=true,val swipeDownHide:Boolean=true,val swipeUpShift:Boolean=true,val swipeLeftDeleteWord:Boolean=false,
+                   val haptic:KeyFeedback.Haptic=KeyFeedback.Haptic.SYSTEM,val hapticStrength:Float=0.6f,
+                   val sound:Boolean=false,val soundVolume:Float=0.5f,
+                   /** Bulle d'aperçu au-dessus du doigt (jamais dans un champ sensible). */
+                   val preview:Boolean=false)
 
     var keys:List<KeyDef> = emptyList();private set
     /** Minuteries (appui long, répétition, surbrillance) : fil principal, même vue détachée (tests). */
     private val timers=android.os.Handler(android.os.Looper.getMainLooper())
     private var detector=KeyDetector(keys)
     var settings=Settings()
+        set(value){field=value;feedback.configure(value.haptic,value.hapticStrength,value.sound,value.soundVolume,value.quiet)}
+    private val feedback=KeyFeedback(context)
     var palette:KeyboardPrefs.Palette=KeyboardPrefs.palette(context)
         set(value){field=value;invalidate()}
     private var textureShader:BitmapShader?=null
@@ -124,7 +129,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         val key=detect(e.getX(index),e.getY(index));t.key=key
         t.startedOnText=key!=null && (key.printable || key.code==" ")
         if(key!=null){
-            if(settings.haptic)performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            feedback.press(this,key.code)
             when {
                 key.code=="delete"->{t.committed=true;listener.onKey("delete",false);timers.postDelayed(t.repeat,REPEAT_START_MS)}
                 key.code=="shift"->{t.committed=true;listener.onKey("shift",false);timers.postDelayed(t.longPress,settings.longPressMs)}
@@ -190,7 +195,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         }
     }
     private var lastX=0f;private var lastY=0f
-    private fun tick(){if(settings.haptic)performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)}
+    private fun tick()=feedback.tick(this)
 
     /** Vrai si le relâchement valide une touche (clic, pour l'accessibilité). */
     private fun up(id:Int):Boolean {
@@ -206,7 +211,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         val p=popup
         if(p!=null && p.pointer==id){popup=null;choose(p);flash(p.base);invalidate();return true}
         val click=key!=null && !committed && !longPressed && !(key.isModeKey && fromMode)
-        if(click)listener.onKey(key.code,fromMode && key.printable)
+        if(click){feedback.release(this);listener.onKey(key.code,fromMode && key.printable)}
         if(key!=null)flash(key)
         invalidate()
         return click
@@ -229,7 +234,7 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
             t.longPressed=true
         }else if(listener.onLongPress(key.code)){t.longPressed=true;t.committed=true}
         else return
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        feedback.longPress(this)
         invalidate()
     }
 
@@ -279,6 +284,10 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
                     drawLabelKey(canvas,p.labels[i],i==p.selected,x*sx,y*sy,(x+54)*sx,(y+72)*sy)
                 }
             }
+            if(settings.preview && !settings.quiet && popup==null)for(t in trackers){
+                val k=t.key
+                if(t.active && k!=null && k.printable && !t.trackpad && !t.longPressed)drawPreview(canvas,k,sx,sy)
+            }
             if(anyPressed)InputLatency.pressedDrawn()
         }
     }
@@ -302,6 +311,16 @@ class KeyboardView(context:Context,private val listener:Listener):View(context){
         drawText(canvas,k.label,size*u,u,fg)
         ink.isFakeBoldText=false
         if(k.hint!=null){ink.textAlign=Paint.Align.RIGHT;ink.textSize=17*u;ink.color=fg;canvas.drawText(k.hint,box.right-6*u,box.top+20*u,ink)}
+    }
+
+    /** Bulle d'aperçu (SwiftKey, Gboard) : dessinée dans la même vue, au-dessus de la touche, sans fenêtre en plus. */
+    private fun drawPreview(canvas:Canvas,k:KeyDef,sx:Float,sy:Float){
+        val w=k.w*1.5f;val h=k.h*1.05f
+        val left=(k.x+k.w/2f-w/2f).coerceIn(2f,REF_W-2f-w);val top=(k.y-h-6f).coerceAtLeast(2f)
+        box.set(left*sx,top*sy,(left+w)*sx,(top+h)*sy)
+        val u=box.height()/85f
+        fill.shader=null;fill.color=palette.special;canvas.drawRoundRect(box,14f*u,14f*u,fill)
+        drawText(canvas,k.label,56f*u,u,palette.specialText)
     }
 
     private fun drawLabelKey(canvas:Canvas,label:String,selected:Boolean,l:Float,t:Float,r:Float,b:Float){

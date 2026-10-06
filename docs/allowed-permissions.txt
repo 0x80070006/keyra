@@ -1,2 +1,3 @@
 # Permissions autorisées dans le manifeste fusionné de release (une par ligne).
 # Liste vide : Keyra ne demande aucune permission. Toute ajout exige un ADR.
+android.permission.VIBRATE

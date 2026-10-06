@@ -54,6 +54,10 @@ data class LayoutState(
     val pinDigits:List<String>?=null,
     /** Navigation privée ou application incognito : un indicateur remplace l'icône des réglages. */
     val incognito:Boolean=false,
+    /** Rangées de lettres (AZERTY, BÉPO…), lues depuis assets/layouts (LayoutParser). */
+    val letters:LetterLayout=LetterLayout.AZERTY,
+    /** Rangée de chiffres au-dessus des lettres (mode lettres seulement). */
+    val numberRow:Boolean=false,
 )
 
 object KeyboardLayouts {
@@ -91,23 +95,41 @@ object KeyboardLayouts {
         }
         key("next","menu",618,15,58,62,special=true,round=true,proximity=false)
         if(s.mode==4){numpad(s,::key);return keys}
-        val rows=when(s.mode){1->listOf("1234567890","@#€_&-+()/","*\"':;!?");2->listOf("~`|•√π÷×¶∆","£¢$¥^°={}\\","%©®™✓[]");else->listOf("azertyuiop","qsdfghjklm","wxcvbn'")}
-        for(r in 0..2)rows[r].forEachIndexed{i,ch->
-            val base=ch.toString()
-            val hint=if(r==0 && s.mode==0)((i+1)%10).toString() else null
-            val popup=if(s.mode!=0)emptyList() else buildList{add(base);accentMap[base]?.forEach{add(it.toString())};hint?.let{add(it)}}.takeIf{it.size>1}.orEmpty()
-            key(if(s.mode==0 && s.shifted)base.uppercase() else base,base,if(r==2)row3[i] else xs[i],rowY[r],if(r==2 && i in 3..4)59 else 58,85,hint=hint,popup=popup)
+        // Géométrie : rangées de 85 sans rangée de chiffres ; avec elle, une rangée de 64 et des rangées de 82.
+        val digitsRow=s.mode==0 && s.numberRow
+        val rowY=if(digitsRow)intArrayOf(164,256,348) else intArrayOf(95,200,306)
+        val keyH=if(digitsRow)82 else 85
+        val bottomY=if(digitsRow)440 else 412
+        if(digitsRow)for(i in 0..9){val d=((i+1)%10).toString();key(d,d,xs[i],92,58,64)}
+        val rows=when(s.mode){
+            1->listOf("1234567890","@#€_&-+()/","*\"':;!?").map{r->r.map{it.toString()}}
+            2->listOf("~`|•√π÷×¶∆","£¢$¥^°={}\\","%©®™✓[]").map{r->r.map{it.toString()}}
+            else->s.letters.rows
         }
-        key(if(s.mode==0)"shift" else if(s.mode==1)"=\\<" else "?123",if(s.mode==0)"shift" else "moreSymbols",8,306,91,85,special=true,small=s.mode!=0)
-        key("delete","delete",584,306,91,85,special=true)
-        key(if(s.mode==1 || s.mode==2)"ABC" else "?123","symbols",8,412,91,85,special=true,round=true,small=true)
+        for(r in 0..2){
+            val row=rows[r];val n=row.size
+            row.forEachIndexed{i,base->
+                val hint=if(r==0 && s.mode==0 && !digitsRow && i<10)((i+1)%10).toString() else null
+                val popup=if(s.mode!=0)emptyList() else buildList{add(base);accentMap[base]?.forEach{add(it.toString())};hint?.let{add(it)}}.distinct().takeIf{it.size>1}.orEmpty()
+                val (x,w)=when{
+                    r<2 && n==10->xs[i] to 58
+                    r==2 && n==7->row3[i] to (if(i in 3..4)59 else 58)
+                    r<2->{val pitch=minOf(67.8f,678f/n);(8+(678f-pitch*n)/2+i*pitch).toInt() to (pitch-9.8f).toInt()}
+                    else->{val pitch=minOf(67.8f,474f/n);(110+(474f-pitch*n)/2+i*pitch).toInt() to (pitch-9.8f).toInt()}
+                }
+                key(if(s.mode==0 && s.shifted)base.uppercase() else base,base,x,rowY[r],w,keyH,hint=hint,popup=popup)
+            }
+        }
+        key(if(s.mode==0)"shift" else if(s.mode==1)"=\\<" else "?123",if(s.mode==0)"shift" else "moreSymbols",8,rowY[2],91,keyH,special=true,small=s.mode!=0)
+        key("delete","delete",584,rowY[2],91,keyH,special=true)
+        key(if(s.mode==1 || s.mode==2)"ABC" else "?123","symbols",8,bottomY,91,85,special=true,round=true,small=true)
         val slash=s.mode==0 && !s.searchAction
-        key(if(slash)"/" else ",",if(slash)"/" else ",",110,412,58,85,special=true)
-        key(if(s.mode==0)"smile" else "123\n456\n789",if(s.mode==0)"emoji" else "keypad",177,412,58,85,small=s.mode!=0)
-        key(""," ",245,412,261,86,small=true)
-        key(".",".",517,412,57,85,special=true)
-        key(if(s.searchAction)"search" else "enter","enter",585,412,90,85,special=true,round=true)
-        if(s.mode==0)key("à é ç  ·  accents","accents",220,517,244,36,small=true,transparent=true,proximity=false)
+        key(if(slash)"/" else ",",if(slash)"/" else ",",110,bottomY,58,85,special=true)
+        key(if(s.mode==0)"smile" else "123\n456\n789",if(s.mode==0)"emoji" else "keypad",177,bottomY,58,85,small=s.mode!=0)
+        key(""," ",245,bottomY,261,86,small=true)
+        key(".",".",517,bottomY,57,85,special=true)
+        key(if(s.searchAction)"search" else "enter","enter",585,bottomY,90,85,special=true,round=true)
+        if(s.mode==0)key("à é ç  ·  accents","accents",220,bottomY+105,244,36,small=true,transparent=true,proximity=false)
         return keys
     }
 

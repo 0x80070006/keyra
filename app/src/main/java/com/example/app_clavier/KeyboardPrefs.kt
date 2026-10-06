@@ -7,6 +7,10 @@ import android.os.Build
 
 object KeyboardPrefs {
     fun of(c: Context) = c.getSharedPreferences("keyboard", Context.MODE_PRIVATE)
+    /** Mode haptique (phase 6). Repli sur l'ancien interrupteur « haptic » de Keyra 11. */
+    fun haptic(p: android.content.SharedPreferences) = com.example.app_clavier.keyboard.KeyFeedback.hapticFrom(
+        p.getString("haptic_mode", null) ?: if (p.getBoolean("haptic", true)) "system" else "off")
+    fun hapticOn(p: android.content.SharedPreferences) = haptic(p) != com.example.app_clavier.keyboard.KeyFeedback.Haptic.OFF
     val themes = linkedMapOf("brown" to "Brun & bleu", "dynamic" to "Couleurs du téléphone", "auto" to "Système clair / sombre", "light" to "Clair", "dark" to "Ardoise", "mint" to "Menthe", "blue" to "Océan", "purple" to "Prune", "rose" to "Rose", "green" to "Forêt", "gradient" to "Dégradé", "amber" to "Ambre", "crimson" to "Pourpre", "lavender" to "Lavande", "teal" to "Lagon", "sand" to "Sable", "cobalt" to "Cobalt", "plum" to "Aubergine", "coral" to "Corail", "image" to "Image personnalisée", "custom" to "Mes deux couleurs")
     data class Palette(val background: Int, val key: Int, val special: Int, val text: Int, val specialText: Int, val gradient: Boolean = false)
     private fun color(v: String) = Color.parseColor(v)
