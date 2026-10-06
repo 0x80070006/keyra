@@ -1,6 +1,6 @@
 # ADR-0012 — Validation de la frappe au relâchement par défaut
 
-- **Statut** : accepté (phase 0), avec mesure comparative obligatoire en phase 2
+- **Statut** : accepté et implémenté (phase 2). La mesure comparative sur appareil réel est reportée, à la demande de l'utilisateur.
 - **Arbitrage** : D12
 
 ## Contexte
