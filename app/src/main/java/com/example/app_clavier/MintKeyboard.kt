@@ -168,14 +168,14 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
     private fun button(text:String,code:String,x:Int,y:Int,w:Int,h:Int,special:Boolean=false,round:Boolean=false,hint:String?=null,small:Boolean=false,transparent:Boolean=false) {
         val red=code.startsWith("hand:") && prefs.getInt("hand",0)==code.substringAfter(':').toIntOrNull()
         val texture=if(prefs.getString("theme","brown")=="image")artwork?.keys else null
-        val view=Key(context,text,palette,special,round,hint,if(small)28f else 44f,transparent,code=="shift" && shifted,red,mode==3 && code=="emoji",prefs.getBoolean("haptic",true),texture,x,y,w,h)
+        val view=Key(context,text,palette,special,round,hint,if(small)28f else 44f,transparent,code=="shift" && shifted,red,mode==3 && code=="emoji",KeyboardPrefs.hapticOn(prefs),texture,x,y,w,h)
         keyCodes[view]=code
         view.contentDescription=when(code){" "->"Espace";"symbols"->"Chiffres et symboles";"emoji"->"Emoji";"shift"->if(locked)"Majuscules verrouillées" else "Majuscules";"delete"->"Effacer";"menu"->"Panneaux de fonctions";"moreSymbols"->"Deuxième page de symboles";"enter"->"Entrée";else->text}
         view.setOnClickListener{press(code)}
         if(code.length==1 || code.startsWith("emojiQuery:")){
             view.setOnTouchListener{v,event->
                 when(event.actionMasked){
-                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)}
+                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;press(code);if(KeyboardPrefs.hapticOn(prefs))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)}
                     MotionEvent.ACTION_UP->{(v as Key).flash();v.isPressed=false}
                     MotionEvent.ACTION_CANCEL->v.isPressed=false
                 }
@@ -191,7 +191,7 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
             })
             view.setOnTouchListener{v,event->
                 when(event.actionMasked){
-                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;erase();if(prefs.getBoolean("haptic",true))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);v.postDelayed(repeat,230)}
+                    MotionEvent.ACTION_DOWN->{InputLatency.down(event);lastInputDown=android.os.SystemClock.uptimeMillis();v.isPressed=true;erase();if(KeyboardPrefs.hapticOn(prefs))v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);v.postDelayed(repeat,230)}
                     MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->{v.removeCallbacks(repeat);v.isPressed=false}
                     MotionEvent.ACTION_MOVE->{if(event.x<0 || event.y<0 || event.x>v.width || event.y>v.height){v.removeCallbacks(repeat);v.isPressed=false}}
                 }
@@ -288,7 +288,11 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         view.settings=KeyboardView.Settings(
             commitOnDown=prefs.getBoolean("commit_on_down",false),
             longPressMs=prefs.getInt("long_press_ms",300).coerceIn(200,600).toLong(),
-            haptic=prefs.getBoolean("haptic",true),
+            haptic=KeyboardPrefs.haptic(prefs),
+            hapticStrength=prefs.getInt("haptic_strength",60)/100f,
+            sound=prefs.getBoolean("key_sound",false),
+            soundVolume=prefs.getInt("key_sound_volume",50)/100f,
+            preview=prefs.getBoolean("key_preview",false),
             trackpad=prefs.getBoolean("trackpad",true),
             swipeDownHide=prefs.getBoolean("gesture_down",true),
             swipeUpShift=prefs.getBoolean("gesture_up",true),
@@ -300,7 +304,8 @@ class MintKeyboard(context:Context,private val action:(String)->Unit):ViewGroup(
         typingActive=true
         requestLayout()
     }
-    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,strip,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito))
+    private fun typingKeys()=KeyboardLayouts.build(LayoutState(mode,shifted,locked,searchAction,strip,if(mode==0)accents else null,if(mode==4)pinDigits else null,incognito,
+        com.example.app_clavier.keyboard.LayoutCatalog.get(context,prefs.getString("layout","azerty")),prefs.getBoolean("number_row",false)))
     /** Met à jour les touches sans reconstruire les vues, sauf si l'écran change de nature (panneau, emoji). */
     private fun refresh(){
         val view=keyboardView
