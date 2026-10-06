@@ -29,3 +29,7 @@ Format : contexte, décision, conséquences, considérations de sécurité. Un A
 | [0023](0023-chaine-de-build-rust.md) | Chaîne de build Rust | accepté |
 | [0024](0024-coffre-xchacha20-en-rust.md) | Coffre XChaCha20-Poly1305 en Rust | accepté |
 | [0025](0025-moteur-de-prediction-rust.md) | Moteur de prédiction en Rust | accepté |
+| [0026](0026-retour-haptique-et-son.md) | Retour haptique et son, permission VIBRATE | accepté |
+| [0027](0027-dispositions-json.md) | Dispositions JSON, parseur strict | accepté |
+| [0028](0028-export-chiffre-argon2id.md) | Export chiffré Argon2id | accepté |
+| [0029](0029-extraits-et-coffre-biometrique.md) | Extraits et coffre biométrique | accepté |

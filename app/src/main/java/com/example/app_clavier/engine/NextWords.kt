@@ -49,6 +49,7 @@ object NextWords {
 
     /** Tableau de transparence (phase 6) et tests. */
     fun all(c:Context):Map<Pair<String,String>,Int>? = store(c).entries()?.entries?.associate{(k,v)->(k.substringBefore(SEPARATOR) to k.substringAfter(SEPARATOR)) to (v.toIntOrNull() ?: 0)}
+    fun remove(c:Context,previous:String,next:String)=store(c).remove("$previous$SEPARATOR$next")
     fun clear(c:Context)=store(c).clear()
 }
 

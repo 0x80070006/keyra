@@ -13,6 +13,7 @@ import com.example.app_clavier.core.KeyraCore
 import com.example.app_clavier.engine.BlockedWords
 import com.example.app_clavier.engine.NextWords
 import com.example.app_clavier.engine.Predictor
+import com.example.app_clavier.engine.Snippets
 import com.example.app_clavier.ime.ImeSettings
 import com.example.app_clavier.keyboard.Strip
 import com.example.app_clavier.keyboard.StripItem
@@ -197,6 +198,7 @@ class MintInputService:InputMethodService(){
         val tolerance=settings.tolerance
         val autocorrect=settings.autocorrect && tolerance>0
         val emojiAllowed=prefs.getBoolean("emoji_suggest",true) && !policy.noHistory
+        val snippetsAllowed=!policy.isLocked
         worker.execute {
             if(id!=generation)return@execute
             val lower=word.lowercase(java.util.Locale.FRENCH)
@@ -212,6 +214,10 @@ class MintInputService:InputMethodService(){
                     ?.takeIf{autocorrect && !BlockedWords.contains(this,it)}
                 val choices=(learned+analysis?.suggestions.orEmpty()).distinct().filter{!it.equals(word,true) && !BlockedWords.contains(this,it)}
                 shown=strip(choices,word,correction,if(emojiAllowed)EmojiCatalog.forWord(this,word) else null)
+                // Extrait de texte : le raccourci tapé propose son extrait à gauche (texte masqué s'il est protégé).
+                if(snippetsAllowed)Snippets.find(this,word)?.let{s->
+                    shown=shown.copy(left=StripItem("✎ "+(s.plain?.replace('\n',' ')?.take(24) ?: "🔒 ${s.shortcut}"),"snippet:${s.shortcut}"))
+                }
             }
             main.post{if(id==generation && !destroyed){corrections.putAll(computed);if(keyboard?.showSuggestions(shown)==true)suggestionWord=word}}
         }
@@ -317,6 +323,17 @@ class MintInputService:InputMethodService(){
                 val emoji=key.substringAfter(':')
                 logic.onDelimiter(" ");logic.onText(emoji)
                 val allowed=!policy.noHistory;KeyManager.executor.execute{LearningGate.emoji(this,allowed,emoji)}
+            }
+            key.startsWith("snippet:") -> {
+                if(!policy.canSuggest || policy.isLocked)return
+                val snippet=Snippets.find(this,key.substringAfter(':')) ?: return
+                if(!snippet.protected){logic.expandSnippet(snippet.plain)}
+                else{
+                    logic.expandSnippet(null)
+                    val info=currentInputEditorInfo
+                    startActivity(Intent(this,UnlockActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("mode","snippet")
+                        .putExtra("shortcut",snippet.shortcut).putExtra("target",info?.packageName).putExtra("field",info?.fieldId ?: 0))
+                }
             }
             key.startsWith("block:") -> {
                 val word=key.substringAfter(':')

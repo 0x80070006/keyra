@@ -15,6 +15,21 @@ import org.junit.runner.RunWith
 class KeyraCoreTest {
     @Test fun nativeLibraryLoadsWithMatchingAbi(){assertTrue(KeyraCore.available)}
 
+    /** Export chiffré (ADR-0028) : Argon2id 64 Mio réel sur l'appareil, aller-retour, mauvaise phrase, fichier tronqué. */
+    @Test fun backupRoundTripThroughJni(){
+        val payload=com.example.app_clavier.storage.Backup.Payload(mapOf("words" to mapOf("chouquette" to "3"),"snippets" to mapOf("adr" to "T	12 rue des Lilas")))
+        val start=android.os.SystemClock.elapsedRealtime()
+        val sealed=KeyraCore.sealBackup("une phrase de passe".toByteArray(),ByteArray(16){1},ByteArray(24){2},com.example.app_clavier.storage.Backup.encode(payload))
+        android.util.Log.i("KeyraCoreTest","Argon2id export : ${android.os.SystemClock.elapsedRealtime()-start} ms") // journal-ok: durée seulement
+        assertTrue(sealed!=null && sealed.size>61)
+        val (result,opened)=com.example.app_clavier.storage.Backup.open("une phrase de passe".toCharArray(),sealed!!)
+        assertEquals(com.example.app_clavier.storage.Backup.Result.OK,result)
+        assertEquals(payload.stores,opened?.stores)
+        assertEquals(com.example.app_clavier.storage.Backup.Result.WRONG_PASSWORD,com.example.app_clavier.storage.Backup.open("autre phrase".toCharArray(),sealed).first)
+        assertEquals(com.example.app_clavier.storage.Backup.Result.BAD_FILE,com.example.app_clavier.storage.Backup.open("une phrase de passe".toCharArray(),sealed.copyOf(40)).first)
+        assertEquals(com.example.app_clavier.storage.Backup.Result.NOT_AN_EXPORT,com.example.app_clavier.storage.Backup.open("x".toCharArray(),"PK".toByteArray()).first)
+    }
+
     @Test fun classifiesThroughJni(){
         assertEquals(Kind.CARD_NUMBER,SecretDetector.classify("4111 1111 1111 1111"))
         assertEquals(Kind.IBAN,SecretDetector.classify("FR76 3000 6000 0112 3456 7890 189"))

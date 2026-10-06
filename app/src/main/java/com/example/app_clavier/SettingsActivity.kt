@@ -42,6 +42,7 @@ class SettingsActivity:Activity(){
         fun button(s:String,run:()->Unit){root.addView(Button(this).apply{text=s;isAllCaps=false;setTextColor(p.text);backgroundTintList=android.content.res.ColorStateList.valueOf(p.key);setOnClickListener{run()}})}
         button("‹  Retour"){finish()}
         text("Ton clavier, tes réglages",27f)
+        button(getString(R.string.settings_dashboard)){startActivity(Intent(this,TransparencyActivity::class.java))}
         text("Correction française",21f)
         root.addView(Switch(this).apply{text="Corriger automatiquement à l’espace";setTextColor(p.text);isChecked=prefs.getBoolean("correction",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("correction",v).apply()}})
         val value=TextView(this).apply{setTextColor(p.text);textSize=16f;setPadding(0,dp(14),0,0)}
@@ -57,7 +58,37 @@ class SettingsActivity:Activity(){
         val personal=EditText(this).apply{hint="Un mot par ligne";setTextColor(p.text);setHintTextColor(p.text);minLines=2;maxLines=5;setText(PersonalWords.asText(this@SettingsActivity));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE}
         root.addView(personal);button("Enregistrer mes mots"){if(PersonalWords.replaceFromText(this,personal.text.toString()))Toast.makeText(this,"Mots enregistrés, chiffrés, sur ce téléphone",Toast.LENGTH_SHORT).show() else Toast.makeText(this,"Coffre fermé : déverrouille le téléphone",Toast.LENGTH_SHORT).show()}
         text("Saisie et réactivité",21f)
-        root.addView(Switch(this).apply{text="Retour haptique à chaque touche";setTextColor(p.text);isChecked=prefs.getBoolean("haptic",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("haptic",v).apply()}})
+        fun choices(options:List<Pair<String,String>>,current:String,save:(String)->Unit){
+            val row=LinearLayout(this)
+            options.forEach{(id,title)->row.addView(Button(this).apply{
+                text=if(current==id)"✓ $title" else title;isAllCaps=false;textSize=12f;setTextColor(p.text)
+                backgroundTintList=android.content.res.ColorStateList.valueOf(p.key)
+                setOnClickListener{save(id);render()}
+            },LinearLayout.LayoutParams(0,dp(56),1f).apply{setMargins(dp(2),dp(2),dp(2),dp(2))})}
+            root.addView(row)
+        }
+        fun slider(title:String,key:String,default:Int){
+            val label=TextView(this).apply{setTextColor(p.text);textSize=15f;text=getString(R.string.setting_percent,title,prefs.getInt(key,default))}
+            root.addView(label)
+            root.addView(SeekBar(this).apply{max=100;progress=prefs.getInt(key,default);setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
+                override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){label.text=getString(R.string.setting_percent,title,v)}
+                override fun onStartTrackingTouch(s:SeekBar?){}
+                override fun onStopTrackingTouch(s:SeekBar?){prefs.edit().putInt(key,progress.coerceAtLeast(5)).apply()}
+            })})
+        }
+        text("Disposition des lettres",15f)
+        com.example.app_clavier.keyboard.LayoutCatalog.ids.entries.chunked(3).forEach{chunk->
+            choices(chunk.map{it.key to it.value},prefs.getString("layout","azerty") ?: "azerty"){prefs.edit().putString("layout",it).apply()}
+        }
+        root.addView(Switch(this).apply{setText(R.string.setting_number_row);setTextColor(p.text);isChecked=prefs.getBoolean("number_row",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("number_row",v).apply()}})
+        text("Vibration à chaque touche",15f)
+        val hapticMode=KeyboardPrefs.haptic(prefs).name.lowercase()
+        choices(listOf("off" to "Aucune","system" to "Du téléphone","custom" to "Personnalisée"),hapticMode){prefs.edit().putString("haptic_mode",it).apply()}
+        if(hapticMode=="custom")slider("Intensité","haptic_strength",60)
+        root.addView(Switch(this).apply{setText(R.string.setting_key_sound);setTextColor(p.text);isChecked=prefs.getBoolean("key_sound",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("key_sound",v).apply();render()}})
+        if(prefs.getBoolean("key_sound",false))slider("Volume","key_sound_volume",50)
+        root.addView(Switch(this).apply{setText(R.string.setting_key_preview);setTextColor(p.text);isChecked=prefs.getBoolean("key_preview",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("key_preview",v).apply()}})
+        text("« Du téléphone » suit le réglage de retour tactile d’Android. Le son et la bulle d’aperçu sont toujours coupés dans les champs de mot de passe : ils trahiraient ce qui est tapé. Le son se tait aussi quand le téléphone est en silencieux ou en vibreur.",14f)
         root.addView(Switch(this).apply{text="Deux espaces insèrent un point";setTextColor(p.text);isChecked=prefs.getBoolean("double_space_period",true);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("double_space_period",v).apply()}})
         root.addView(Switch(this).apply{setText(R.string.setting_commit_on_down);setTextColor(p.text);isChecked=prefs.getBoolean("commit_on_down",false);setOnCheckedChangeListener{_,v->prefs.edit().putBoolean("commit_on_down",v).apply()}})
         text("Par défaut, la touche est validée au relâchement : tu peux glisser le doigt pour corriger une frappe imprécise, ou glisser depuis ?123 vers un symbole. Un second doigt valide aussitôt la frappe du premier.",14f)
@@ -132,10 +163,10 @@ class SettingsActivity:Activity(){
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION),pickBackground)
         }
         fun blurControl(title:String,pref:String,default:Int){
-            val value=TextView(this).apply{setTextColor(p.text);textSize=15f;text="$title : ${prefs.getInt(pref,default)}"}
+            val value=TextView(this).apply{setTextColor(p.text);textSize=15f;text=getString(R.string.setting_value,title,prefs.getInt(pref,default))}
             root.addView(value)
             root.addView(SeekBar(this).apply{max=25;progress=prefs.getInt(pref,default);setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
-                override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){value.text="$title : $v"}
+                override fun onProgressChanged(s:SeekBar?,v:Int,user:Boolean){value.text=getString(R.string.setting_value,title,v)}
                 override fun onStartTrackingTouch(s:SeekBar?){}
                 override fun onStopTrackingTouch(s:SeekBar?){prefs.edit().putInt(pref,progress).apply()}
             })})

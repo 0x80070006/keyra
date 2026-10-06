@@ -151,7 +151,7 @@ abstract class LogGuardTask : DefaultTask() {
         val literalOnly = listOf(
             Regex("""(?<!fun\s)(?<!fun <T> )\btraced\((?!\s*"[^"$]*"\s*\))""") to "traced() exige un nom littéral constant",
             Regex("""Trace\.beginSection\((?!\s*"[^"$]*"\s*\))""") to "Trace.beginSection() exige un nom littéral constant",
-            Regex("""Toast\.makeText\([^,]+,\s*(?!"[^"$]*"\s*,)""") to "le message d'un Toast doit être un littéral constant",
+            Regex("""Toast\.makeText\([^,]+,\s*(?!"[^"$]*"\s*,|R\.string\.\w+\s*,)""") to "le message d'un Toast doit être un littéral constant ou une ressource R.string",
             Regex("""\b(error|IllegalStateException|IllegalArgumentException)\(\s*"[^"]*\$""") to "message d'exception construit à partir d'une variable",
         )
         val problems = ArrayList<String>()

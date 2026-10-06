@@ -35,3 +35,10 @@ path = "fuzz_targets/dictionary_load.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "backup_header"
+path = "fuzz_targets/backup_header.rs"
+test = false
+doc = false
+bench = false

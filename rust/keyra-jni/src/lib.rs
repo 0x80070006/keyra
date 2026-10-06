@@ -11,6 +11,7 @@
 //! Les tests de ce pont sont des tests instrumentés Android (`KeyraCoreTest`, `VaultTest`) : ils passent par la vraie JVM.
 
 use jni_sys::{JNIEnv, jboolean, jbyte, jbyteArray, jclass, jint, jsize};
+use keyra_core::backup::{self, BackupError, KdfParams};
 use keyra_core::predict::{Engine, MAX_DICTIONARY_BYTES};
 use keyra_core::vault::{JournalEnd, MAX_FILE, MAX_RECORD, Vault};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -21,7 +22,7 @@ use zeroize::Zeroize;
 pub const ERROR: jint = -1;
 
 /// Version du contrat entre la bibliothèque native et `KeyraCore.kt`. À incrémenter à chaque changement de signature.
-pub const ABI_VERSION: jint = 3;
+pub const ABI_VERSION: jint = 4;
 
 /// Coffre unique du processus : `None` tant que l'appareil n'a pas été déverrouillé, ou après `vaultLock`.
 static VAULT: Mutex<Option<Vault>> = Mutex::new(None);
@@ -256,6 +257,70 @@ pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_vaultReadJou
         })?;
         let array = new_byte_array(env, &encoded);
         encoded.zeroize();
+        array
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `KeyraCore.backupSeal(password, salt, nonce, plaintext): ByteArray?` : export chiffré (ADR-0028),
+/// paramètres Argon2id par défaut. `null` en cas d'erreur. Phrase de passe et texte clair sont effacés.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_backupSeal(
+    env: *mut JNIEnv,
+    _class: jclass,
+    password: jbyteArray,
+    salt: jbyteArray,
+    nonce: jbyteArray,
+    plaintext: jbyteArray,
+) -> jbyteArray {
+    catch_unwind(AssertUnwindSafe(|| {
+        let mut password = copy_byte_array(env, password, 1024)?;
+        let salt = copy_byte_array(env, salt, 64)?;
+        let nonce = copy_byte_array(env, nonce, 64)?;
+        let mut plain = copy_byte_array(env, plaintext, backup::MAX_SIZE)?;
+        let sealed = backup::seal(&password, &salt, &nonce, KdfParams::DEFAULT, &plain).ok();
+        password.zeroize();
+        plain.zeroize();
+        new_byte_array(env, &sealed?)
+    }))
+    .ok()
+    .flatten()
+    .unwrap_or(std::ptr::null_mut())
+}
+
+/// `KeyraCore.backupOpen(password, data): ByteArray?` : `statut (u8) ‖ texte clair`.
+/// Statut : 0 succès, 1 pas un export, 2 taille, 3 paramètres refusés, 4 entrée invalide, 5 phrase ou fichier faux.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_example_app_1clavier_core_KeyraCore_backupOpen(
+    env: *mut JNIEnv,
+    _class: jclass,
+    password: jbyteArray,
+    data: jbyteArray,
+) -> jbyteArray {
+    catch_unwind(AssertUnwindSafe(|| {
+        let mut password = copy_byte_array(env, password, 1024)?;
+        let data = copy_byte_array(env, data, backup::MAX_SIZE)?;
+        let opened = backup::open(&password, &data);
+        password.zeroize();
+        let mut out = match opened {
+            Ok(plain) => {
+                let mut out = Vec::with_capacity(plain.len() + 1);
+                out.push(0u8);
+                out.extend_from_slice(&plain);
+                out
+            }
+            Err(e) => vec![match e {
+                BackupError::NotAnExport => 1,
+                BackupError::BadSize => 2,
+                BackupError::WeakOrHeavyParams => 3,
+                BackupError::BadInput => 4,
+                BackupError::Unauthentic => 5,
+            }],
+        };
+        let array = new_byte_array(env, &out);
+        out.zeroize();
         array
     }))
     .ok()

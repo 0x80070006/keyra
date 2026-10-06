@@ -31,3 +31,9 @@ lto = true
 opt-level = 3
 strip = true
 debug = false
+
+# Argon2id à 64 Mio : optimisé même en debug, sinon les tests prennent des dizaines de secondes.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3

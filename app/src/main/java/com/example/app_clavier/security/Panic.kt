@@ -16,6 +16,7 @@ import com.example.app_clavier.storage.Migration11to12
 object Panic {
     fun wipe(c:Context,killProcess:Boolean=true){
         KeyManager.destroy(c)
+        SnippetVault.destroy()
         EncryptedKv.forgetAll()
         Migration11to12.eraseLegacy(c)
         if(killProcess)Process.killProcess(Process.myPid())

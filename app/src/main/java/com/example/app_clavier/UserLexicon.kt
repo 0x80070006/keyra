@@ -36,6 +36,7 @@ object UserLexicon {
 
     /** Tableau de transparence et tests. Null si le coffre est verrouillé. */
     fun all(c:Context):Map<String,Int>? = store(c).entries()?.mapValues{it.value.toIntOrNull() ?: 0}
+    fun remove(c:Context,word:String)=store(c).remove(word)
     fun clear(c:Context)=store(c).clear()
 }
 

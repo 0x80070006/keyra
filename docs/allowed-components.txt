@@ -4,3 +4,5 @@ activity com.example.app_clavier.MainActivity
 activity com.example.app_clavier.SettingsActivity
 activity com.example.app_clavier.MediaInputActivity
 service com.example.app_clavier.MintInputService
+activity com.example.app_clavier.TransparencyActivity
+activity com.example.app_clavier.UnlockActivity

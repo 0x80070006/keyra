@@ -54,6 +54,13 @@ class InputLogicTest {
         assertEquals(listOf("vnir"),host.learned)
         type("vnir ");assertEquals("plus corrigé dans ce champ","vnir vnir ",target.toString())
     }
+    @Test fun snippetReplacesShortcutWithoutLearning(){
+        type("Voici adr");logic.expandSnippet("12 rue des Lilas\n75000 Paris")
+        assertEquals("Voici 12 rue des Lilas\n75000 Paris",target.toString())
+        assertEquals(-1,target.composingStart);assertEquals("le raccourci n'est pas appris",listOf("Voici"),host.learned)
+        type(" et adr");logic.expandSnippet(null)
+        assertEquals("protégé : le raccourci est seulement effacé","Voici 12 rue des Lilas\n75000 Paris et ",target.toString())
+    }
     @Test fun personalWordsAreNeverCorrected(){host.corrections["keyra"]="kerya";type("Keyra ");assertEquals("Keyra ",target.toString())}
     @Test fun unknownWordsAreLearnedKnownOnesNot(){type("salut chouquette ");assertEquals(listOf("chouquette"),host.learned)}
     @Test fun frenchSpacingBeforeHighPunctuation(){

@@ -10,7 +10,7 @@ import java.nio.ByteOrder
  */
 internal object KeyraCore {
     const val ERROR=-1
-    private const val ABI_VERSION=3
+    private const val ABI_VERSION=4
     /** Faux si la bibliothèque native manque ou ne correspond pas à ce code Kotlin. */
     val available:Boolean by lazy {
         runCatching{System.loadLibrary("keyra_jni");abiVersion()==ABI_VERSION}.getOrDefault(false)
@@ -26,6 +26,27 @@ internal object KeyraCore {
     @JvmStatic private external fun engineAnalyze(word:ByteArray,tolerance:Int,limit:Int):ByteArray?
     @JvmStatic private external fun engineContains(word:ByteArray):Boolean
     @JvmStatic private external fun engineNextLetters(prefix:ByteArray):ByteArray?
+    @JvmStatic private external fun backupSeal(password:ByteArray,salt:ByteArray,nonce:ByteArray,plaintext:ByteArray):ByteArray?
+    @JvmStatic private external fun backupOpen(password:ByteArray,data:ByteArray):ByteArray?
+
+    // ------------------------------------------------------------ export chiffré (phase 6, ADR-0028)
+    /** Export scellé (Argon2id 64 Mio, XChaCha20-Poly1305), ou null. `password` et `plaintext` sont effacés. */
+    fun sealBackup(password:ByteArray,salt:ByteArray,nonce:ByteArray,plaintext:ByteArray):ByteArray? {
+        try{return if(!available)null else backupSeal(password,salt,nonce,plaintext)}
+        catch(_:Throwable){return null}
+        finally{password.fill(0);plaintext.fill(0)}
+    }
+    enum class BackupStatus { OK, NOT_AN_EXPORT, BAD_SIZE, BAD_PARAMS, BAD_INPUT, WRONG_PASSWORD, ERROR }
+    class Opened(val status:BackupStatus,val plaintext:ByteArray?)
+    /** Ouvre un export. `password` est effacé ; l'appelant efface `plaintext` après usage. */
+    fun openBackup(password:ByteArray,data:ByteArray):Opened {
+        val out=try{if(!available)null else backupOpen(password,data)}catch(_:Throwable){null}finally{password.fill(0)}
+            ?: return Opened(BackupStatus.ERROR,null)
+        val status=BackupStatus.entries.getOrElse(out.firstOrNull()?.toInt() ?: 6){BackupStatus.ERROR}
+        val plain=if(status==BackupStatus.OK)out.copyOfRange(1,out.size) else null
+        out.fill(0)
+        return Opened(status,plain)
+    }
 
     // ------------------------------------------------------------ moteur de prédiction (phase 5)
     fun loadEngine(dictionary:ByteArray):Int = if(!available)ERROR else runCatching{engineLoad(dictionary)}.getOrDefault(ERROR)
