@@ -64,14 +64,14 @@ jobs:
           python3 tools/check_manifest.py "$AAPT2" app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Empreinte de l'APK
         run: sha256sum app/build/outputs/apk/release/app-release-unsigned.apk | tee apk.sha256
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: keyra-release-unsigned
           path: |
             app/build/outputs/apk/release/app-release-unsigned.apk
             apk.sha256
             app/build/reports/keyra/sbom.cdx.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: rapports
@@ -113,7 +113,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: ./gradlew :app:connectedDebugAndroidTest
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: tests-instrumentes
@@ -142,7 +142,7 @@ jobs:
           (cd rust && rustup toolchain install)
           ./gradlew --no-build-cache :app:assembleRelease
           cp app/build/outputs/apk/release/app-release-unsigned.apk "$GITHUB_WORKSPACE/keyra.apk"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: repro-${{ strategy.job-index }}
           path: keyra.apk
@@ -152,7 +152,7 @@ jobs:
     needs: reproducible
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: repro-*
       - name: Les deux APK doivent être identiques octet pour octet
